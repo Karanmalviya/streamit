@@ -62,19 +62,16 @@ class ProviderManager {
     }
 
     // Sort streams:
-    // 1. Embed links first (VidLink default instant play)
-    // 2. HDHub Direct CDN links (4K, 1080p PixelDrain/HubCloud high speed)
-    // 3. Archive.org & test CDN
+    // 1. HDHub Direct CDN links (4K, 1080p PixelDrain/HubCloud high speed)
+    // 2. Embed links (VidLink, AutoEmbed, 2Embed, etc.)
     return allSources.sort((a, b) => {
       const isHDHubA = a.id.startsWith('hdhub_') ? 30 : 0;
       const isHDHubB = b.id.startsWith('hdhub_') ? 30 : 0;
       const isEmbedA = a.format === 'embed' ? 20 : 0;
       const isEmbedB = b.format === 'embed' ? 20 : 0;
-      const isFullA = a.id.startsWith('archive_') ? 10 : 0;
-      const isFullB = b.id.startsWith('archive_') ? 10 : 0;
 
-      const weightA = (qualityWeight[a.quality] || 0) + isEmbedA + isHDHubA + isFullA;
-      const weightB = (qualityWeight[b.quality] || 0) + isEmbedB + isHDHubB + isFullB;
+      const weightA = (qualityWeight[a.quality] || 0) + isEmbedA + isHDHubA;
+      const weightB = (qualityWeight[b.quality] || 0) + isEmbedB + isHDHubB;
       return weightB - weightA;
     });
   }
