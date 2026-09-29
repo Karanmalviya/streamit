@@ -1,694 +1,410 @@
 import React from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import Svg, {
+  Path,
+  Rect,
+  Circle,
+  Polygon,
+  Line,
+  Polyline,
+} from 'react-native-svg';
 
-interface IconProps {
-  color: string;
+export interface IconProps {
+  color?: string;
   size?: number;
+  filled?: boolean;
 }
 
-export function HomeIcon({ color, size = 20 }: IconProps) {
-  const isFilled = color === '#FFFFFF';
+// 1. Home Icon (Lucide / Apple SF style with smart active fill)
+export function HomeIcon({ color = '#FFFFFF', size = 22, filled = false }: IconProps) {
+  const isFilled = filled || color === '#FFFFFF';
   return (
-    <View style={[styles.centerBottom, { width: size, height: size }]}>
-      <View
-        style={[
-          styles.homeRoof,
-          {
-            borderLeftWidth: size * 0.5,
-            borderRightWidth: size * 0.5,
-            borderBottomWidth: size * 0.42,
-            borderBottomColor: color,
-          },
-        ]}
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 9.5L12 2.5L21 9.5V20C21 20.5523 20.5523 21 20 21H15C14.4477 21 14 20.5523 14 20V14C14 13.4477 13.5523 13 13 13H11C10.4477 13 10 13.4477 10 14V20C10 20.5523 9.55228 21 9 21H4C3.44772 21 3 20.5523 3 20V9.5Z"
+        fill={isFilled ? color : 'none'}
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      <View
-        style={[
-          styles.homeBody,
-          isFilled ? styles.homeBodyFilled : styles.homeBodyOutlined,
-          {
-            width: size * 0.72,
-            height: size * 0.48,
-            borderColor: color,
-          },
-          isFilled && { backgroundColor: color },
-        ]}>
-        <View
-          style={[
-            styles.homeDoor,
-            {
-              width: size * 0.25,
-              height: size * 0.28,
-            },
-            isFilled ? styles.doorFilledDark : { backgroundColor: color },
-          ]}
-        />
-      </View>
-    </View>
+    </Svg>
   );
 }
 
-export function MovieIcon({ color, size = 20 }: IconProps) {
-  const isFilled = color === '#FFFFFF';
+// 2. Movies Icon (Cinematic Clapperboard with detailed slashes)
+export function MovieIcon({ color = '#FFFFFF', size = 22, filled = false }: IconProps) {
+  const isFilled = filled || color === '#FFFFFF';
   return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View
-        style={[
-          styles.clapperTop,
-          isFilled ? { backgroundColor: color } : styles.clapperTopInactive,
-          {
-            width: size * 0.95,
-            height: size * 0.32,
-            borderColor: color,
-          },
-        ]}>
-        <View style={[styles.clapperSlash, isFilled ? styles.slashDark : { backgroundColor: color }]} />
-        <View style={[styles.clapperSlash, isFilled ? styles.slashDark : { backgroundColor: color }]} />
-        <View style={[styles.clapperSlash, isFilled ? styles.slashDark : { backgroundColor: color }]} />
-      </View>
-      <View
-        style={[
-          styles.clapperBody,
-          isFilled ? styles.clapperBodyFilled : styles.bgTransparent,
-          {
-            width: size * 0.95,
-            height: size * 0.52,
-            borderColor: color,
-          },
-        ]}>
-        <View style={[styles.playTriangle, { borderLeftColor: color }]} />
-      </View>
-    </View>
-  );
-}
-
-export function TvIcon({ color, size = 20 }: IconProps) {
-  const isFilled = color === '#FFFFFF';
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View
-        style={[
-          styles.tvScreen,
-          isFilled ? styles.tvScreenFilled : styles.bgTransparent,
-          {
-            width: size * 0.96,
-            height: size * 0.65,
-            borderColor: color,
-          },
-        ]}>
-        <View style={[styles.tvInnerLine, { width: size * 0.5, backgroundColor: color }]} />
-      </View>
-      <View style={[styles.tvNeck, { backgroundColor: color }]} />
-      <View style={[styles.tvBase, { width: size * 0.45, backgroundColor: color }]} />
-    </View>
-  );
-}
-
-export function AnimeIcon({ color, size = 20 }: IconProps) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View style={[styles.toriiTopBar, { width: size * 0.98, backgroundColor: color }]} />
-      <View style={[styles.toriiSecondBar, { width: size * 0.78, backgroundColor: color }]} />
-      <View style={[styles.toriiPillarsWrap, { width: size * 0.56, height: size * 0.46 }]}>
-        <View style={[styles.toriiPillar, { backgroundColor: color }]} />
-        <View style={[styles.toriiPillar, { backgroundColor: color }]} />
-      </View>
-    </View>
-  );
-}
-
-export function SearchIcon({ color, size = 19 }: IconProps) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View
-        style={[
-          styles.searchLens,
-          {
-            width: size * 0.72,
-            height: size * 0.72,
-            borderRadius: (size * 0.72) / 2,
-            borderColor: color,
-          },
-        ]}
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {/* Slate Top */}
+      <Path
+        d="M20.2 6.5L3.8 11.2C3.1 11.4 2.4 11 2.2 10.3L1.5 7.8C1.3 7.1 1.7 6.4 2.4 6.2L18.8 1.5C19.5 1.3 20.2 1.7 20.4 2.4L21.1 4.9C21.3 5.6 20.9 6.3 20.2 6.5Z"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      <View
-        style={[
-          styles.searchHandle,
-          {
-            width: size * 0.36,
-            backgroundColor: color,
-          },
-        ]}
+      <Path d="M6.5 5.5L9.5 9.5" stroke={color} strokeWidth={1.7} strokeLinecap="round" />
+      <Path d="M12.5 3.8L15.5 7.8" stroke={color} strokeWidth={1.7} strokeLinecap="round" />
+      {/* Slate Body */}
+      <Rect
+        x="3"
+        y="11"
+        width="18"
+        height="10"
+        rx="2"
+        fill={isFilled ? color : 'none'}
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-    </View>
-  );
-}
-
-export function BookmarkIcon({ color, size = 16, filled = false }: IconProps & { filled?: boolean }) {
-  return (
-    <View
-      style={[
-        styles.bookmark,
-        filled ? { backgroundColor: color } : styles.bgTransparent,
-        {
-          width: size * 0.75,
-          height: size,
-          borderColor: color,
-        },
-      ]}
-    />
-  );
-}
-
-export function PlayIcon({ color = '#000000', size = 12 }: { color?: string; size?: number }) {
-  return (
-    <View
-      style={[
-        styles.playIconArrow,
-        {
-          borderTopWidth: size * 0.6,
-          borderBottomWidth: size * 0.6,
-          borderLeftWidth: size * 0.9,
-          borderLeftColor: color,
-        },
-      ]}
-    />
-  );
-}
-
-export function PauseIcon({ color = '#FFFFFF', size = 14 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.pauseWrap, { width: size, height: size }]}>
-      <View style={[styles.pauseBar, { width: size * 0.28, backgroundColor: color }]} />
-      <View style={[styles.pauseBar, { width: size * 0.28, backgroundColor: color }]} />
-    </View>
-  );
-}
-
-export function BackIcon({ color = '#FFFFFF', size = 16 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View
-        style={[
-          styles.backArrowHead,
-          {
-            width: size * 0.5,
-            height: size * 0.5,
-            borderColor: color,
-          },
-        ]}
+      {/* Play indicator in body */}
+      <Polygon
+        points="10,13.5 15,16 10,18.5"
+        fill={isFilled ? '#08090D' : color}
       />
-    </View>
+    </Svg>
   );
 }
 
-export function SubtitleIcon({ color = '#FFFFFF', size = 18 }: { color?: string; size?: number }) {
+// 3. TV / Series Icon (Modern Slim Bezel Smart TV with Stand)
+export function TvIcon({ color = '#FFFFFF', size = 22, filled = false }: IconProps) {
+  const isFilled = filled || color === '#FFFFFF';
   return (
-    <View
-      style={[
-        styles.centerAll,
-        styles.subBorder,
-        {
-          width: size * 1.15,
-          height: size * 0.8,
-          borderColor: color,
-        },
-      ]}>
-      <Text style={[styles.subText, { color, fontSize: size * 0.42 }]}>CC</Text>
-    </View>
-  );
-}
-
-export function AudioIcon({ color = '#FFFFFF', size = 18 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View
-        style={[
-          styles.speakerCone,
-          {
-            borderRightColor: color,
-            borderTopWidth: size * 0.35,
-            borderBottomWidth: size * 0.35,
-            borderRightWidth: size * 0.4,
-          },
-        ]}
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {/* Screen Monitor */}
+      <Rect
+        x="2"
+        y="4"
+        width="20"
+        height="13"
+        rx="2"
+        fill={isFilled ? color : 'none'}
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      <View
-        style={[
-          styles.speakerBase,
-          {
-            width: size * 0.2,
-            height: size * 0.35,
-            backgroundColor: color,
-          },
-        ]}
+      {/* Stand Neck & Base */}
+      <Path d="M12 17V20" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M8 20H16" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      {/* Screen Antenna / Signal accent if inactive */}
+      {!isFilled && (
+        <Path d="M7 10.5H17" stroke={color} strokeWidth={1.2} strokeOpacity={0.4} strokeLinecap="round" />
+      )}
+      {/* Active Screen inner accent */}
+      {isFilled && (
+        <Rect x="5" y="7" width="14" height="7" rx="1" fill="#08090D" fillOpacity={0.3} />
+      )}
+    </Svg>
+  );
+}
+
+// 4. Anime Icon (Iconic Torii Shrine Gate with curved canopy)
+export function AnimeIcon({ color = '#FFFFFF', size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {/* Top curved lintel (Kasagi) */}
+      <Path
+        d="M2 4C8 2.5 16 2.5 22 4"
+        stroke={color}
+        strokeWidth={2.4}
+        strokeLinecap="round"
       />
-    </View>
-  );
-}
-
-export function Forward10Icon({ color = '#FFFFFF', size = 20 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { flexDirection: 'row', width: size, height: size }]}>
-      <View style={[styles.playIconArrow, { borderTopWidth: size * 0.4, borderBottomWidth: size * 0.4, borderLeftWidth: size * 0.5, borderLeftColor: color }]} />
-      <View style={[styles.playIconArrow, { borderTopWidth: size * 0.4, borderBottomWidth: size * 0.4, borderLeftWidth: size * 0.5, borderLeftColor: color }]} />
-    </View>
-  );
-}
-
-export function Replay10Icon({ color = '#FFFFFF', size = 20 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { flexDirection: 'row', width: size, height: size }]}>
-      <View style={[styles.playIconArrow, { borderTopWidth: size * 0.4, borderBottomWidth: size * 0.4, borderRightWidth: size * 0.5, borderLeftWidth: 0, borderRightColor: color, marginRight: 0 }]} />
-      <View style={[styles.playIconArrow, { borderTopWidth: size * 0.4, borderBottomWidth: size * 0.4, borderRightWidth: size * 0.5, borderLeftWidth: 0, borderRightColor: color }]} />
-    </View>
-  );
-}
-
-export function PlusIcon({ color = '#FFFFFF', size = 14 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View style={[styles.plusHorizontal, { width: size, backgroundColor: color }]} />
-      <View style={[styles.plusVertical, { height: size, backgroundColor: color }]} />
-    </View>
-  );
-}
-
-export function VolumeIcon({ color = '#FFFFFF', size = 18 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, styles.rowLayout, { width: size, height: size }]}>
-      <View style={[styles.speakerBase, { width: size * 0.22, height: size * 0.38, backgroundColor: color }]} />
-      <View style={[styles.speakerCone, { borderTopWidth: size * 0.32, borderBottomWidth: size * 0.32, borderRightWidth: size * 0.32, borderRightColor: color }]} />
-      <View style={[styles.speakerWave, { width: size * 0.18, height: size * 0.44, borderColor: color }]} />
-    </View>
-  );
-}
-
-export function VolumeMuteIcon({ color = '#FFFFFF', size = 18 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, styles.rowLayout, { width: size, height: size }]}>
-      <View style={[styles.speakerBase, { width: size * 0.22, height: size * 0.38, backgroundColor: color }]} />
-      <View style={[styles.speakerCone, { borderTopWidth: size * 0.32, borderBottomWidth: size * 0.32, borderRightWidth: size * 0.32, borderRightColor: color }]} />
-      <Text style={[styles.speakerMuteCross, { color, fontSize: size * 0.65 }]}>×</Text>
-    </View>
-  );
-}
-
-export function CheckIcon({ color = '#4ADE80', size = 14 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View
-        style={[
-          styles.checkMark,
-          {
-            width: size * 0.75,
-            height: size * 0.4,
-            borderColor: color,
-          },
-        ]}
+      {/* Upper straight beam (Shimaki) */}
+      <Path
+        d="M3.5 6.5H20.5"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
       />
-    </View>
-  );
-}
-
-export function CCIcon({ color = '#FFFFFF', size = 18 }: { color?: string; size?: number }) {
-  return (
-    <View
-      style={[
-        styles.centerAll,
-        styles.ccBox,
-        {
-          width: size * 1.25,
-          height: size * 0.85,
-          borderColor: color,
-        },
-      ]}>
-      <Text style={[styles.ccText, { color, fontSize: size * 0.55 }]}>CC</Text>
-    </View>
-  );
-}
-
-export function SettingsIcon({ color = '#FFFFFF', size = 18 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View style={[styles.settingsOuter, { width: size * 0.85, height: size * 0.85, borderColor: color }]}>
-        <View style={[styles.settingsInner, { width: size * 0.35, height: size * 0.35, backgroundColor: color }]} />
-      </View>
-    </View>
-  );
-}
-
-export function EpisodesIcon({ color = '#FFFFFF', size = 18 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, styles.episodesWrap, { width: size, height: size }]}>
-      <View style={[styles.epLine, { backgroundColor: color, width: size * 0.9, height: 2 }]} />
-      <View style={[styles.epLine, { backgroundColor: color, width: size * 0.9, height: 2 }]} />
-      <View style={[styles.epLine, { backgroundColor: color, width: size * 0.6, height: 2 }]} />
-    </View>
-  );
-}
-
-
-export function FullscreenIcon({ color = '#FFFFFF', size = 16 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View style={[styles.fsCornerTL, { borderColor: color, width: size * 0.38, height: size * 0.38 }]} />
-      <View style={[styles.fsCornerTR, { borderColor: color, width: size * 0.38, height: size * 0.38 }]} />
-      <View style={[styles.fsCornerBL, { borderColor: color, width: size * 0.38, height: size * 0.38 }]} />
-      <View style={[styles.fsCornerBR, { borderColor: color, width: size * 0.38, height: size * 0.38 }]} />
-    </View>
-  );
-}
-
-export function ExitFullscreenIcon({ color = '#FFFFFF', size = 16 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View style={[styles.efsCornerTL, { borderColor: color, width: size * 0.38, height: size * 0.38 }]} />
-      <View style={[styles.efsCornerTR, { borderColor: color, width: size * 0.38, height: size * 0.38 }]} />
-      <View style={[styles.efsCornerBL, { borderColor: color, width: size * 0.38, height: size * 0.38 }]} />
-      <View style={[styles.efsCornerBR, { borderColor: color, width: size * 0.38, height: size * 0.38 }]} />
-    </View>
-  );
-}
-
-
-export function ChevronDownIcon({ color = '#FFFFFF', size = 12 }: { color?: string; size?: number }) {
-  return (
-    <View style={[styles.centerAll, { width: size, height: size }]}>
-      <View
-        style={[
-          styles.chevronDown,
-          {
-            width: size * 0.6,
-            height: size * 0.6,
-            borderLeftColor: color,
-            borderBottomColor: color,
-          },
-        ]}
+      {/* Lower cross tie beam (Nuki) */}
+      <Path
+        d="M5 10H19"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
       />
-    </View>
+      {/* Left and Right Pillars (Hashira) */}
+      <Path
+        d="M7 6.5V21M17 6.5V21"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+      />
+      {/* Center Top Gakuzuka */}
+      <Path
+        d="M12 6.5V10"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
   );
 }
 
-const styles = StyleSheet.create({
-  bgTransparent: {
-    backgroundColor: 'transparent',
-  },
-  homeBodyFilled: {
-    borderWidth: 0,
-  },
-  homeBodyOutlined: {
-    borderWidth: 1.8,
-    backgroundColor: 'transparent',
-  },
-  doorFilledDark: {
-    backgroundColor: '#08090D',
-  },
-  clapperTopInactive: {
-    backgroundColor: '#181A24',
-  },
-  slashDark: {
-    backgroundColor: '#08090D',
-  },
-  clapperBodyFilled: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  tvScreenFilled: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  centerAll: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  centerBottom: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  homeRoof: {
-    width: 0,
-    height: 0,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-  },
-  homeBody: {
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 2.5,
-    borderBottomRightRadius: 2.5,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  homeDoor: {
-    borderTopLeftRadius: 1.5,
-    borderTopRightRadius: 1.5,
-  },
-  clapperTop: {
-    borderRadius: 2.5,
-    borderWidth: 1.5,
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
-    marginBottom: 1.5,
-  },
-  clapperSlash: {
-    width: 2.5,
-    height: '70%',
-    transform: [{ rotate: '25deg' }],
-  },
-  clapperBody: {
-    borderWidth: 1.6,
-    borderRadius: 2.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playTriangle: {
-    width: 0,
-    height: 0,
-    borderTopWidth: 3.5,
-    borderBottomWidth: 3.5,
-    borderLeftWidth: 5.5,
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-    marginLeft: 1.5,
-  },
-  tvScreen: {
-    borderRadius: 3,
-    borderWidth: 1.7,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tvInnerLine: {
-    height: 1.5,
-    opacity: 0.45,
-    borderRadius: 1,
-  },
-  tvNeck: {
-    width: 2,
-    height: 2,
-  },
-  tvBase: {
-    height: 1.8,
-    borderRadius: 1,
-  },
-  toriiTopBar: {
-    height: 2.2,
-    borderRadius: 1,
-  },
-  toriiSecondBar: {
-    height: 1.6,
-    marginTop: 2.2,
-    borderRadius: 0.5,
-  },
-  toriiPillarsWrap: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 1.2,
-  },
-  toriiPillar: {
-    width: 2.2,
-    height: '100%',
-    borderRadius: 0.5,
-  },
-  searchLens: {
-    borderWidth: 2,
-    position: 'absolute',
-    top: 1,
-    left: 1,
-  },
-  searchHandle: {
-    position: 'absolute',
-    bottom: 1.5,
-    right: 1.5,
-    height: 2.2,
-    borderRadius: 1.2,
-    transform: [{ rotate: '45deg' }],
-  },
-  bookmark: {
-    borderWidth: 1.8,
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
-  },
-  playIconArrow: {
-    width: 0,
-    height: 0,
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-    marginLeft: 2,
-  },
-  pauseWrap: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  pauseBar: {
-    height: '100%',
-    borderRadius: 1.5,
-  },
-  backArrowHead: {
-    borderLeftWidth: 2.2,
-    borderBottomWidth: 2.2,
-    transform: [{ rotate: '45deg' }],
-    marginLeft: 4,
-  },
-  subBorder: {
-    borderWidth: 1.8,
-    borderRadius: 3,
-  },
-  subText: {
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  skipText: {
-    fontWeight: '700',
-  },
-  plusHorizontal: {
-    height: 1.8,
-  },
-  plusVertical: {
-    width: 1.8,
-    position: 'absolute',
-  },
-  
-  fsCornerTL: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-  },
-  fsCornerTR: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    borderTopWidth: 2,
-    borderRightWidth: 2,
-  },
-  fsCornerBL: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 2,
-    borderLeftWidth: 2,
-  },
-  fsCornerBR: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 2,
-    borderRightWidth: 2,
-  },
-  efsCornerTL: {
-    position: 'absolute',
-    top: 2,
-    left: 2,
-    borderBottomWidth: 2,
-    borderRightWidth: 2,
-  },
-  efsCornerTR: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    borderBottomWidth: 2,
-    borderLeftWidth: 2,
-  },
-  efsCornerBL: {
-    position: 'absolute',
-    bottom: 2,
-    left: 2,
-    borderTopWidth: 2,
-    borderRightWidth: 2,
-  },
-  efsCornerBR: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-  },
+// 5. Search Icon (High-precision magnifying lens)
+export function SearchIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle
+        cx="11"
+        cy="11"
+        r="7"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M20.5 20.5L16.2 16.2"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
-  
-  chevronDown: {
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    transform: [{ rotate: '-45deg' }],
-    marginTop: -3,
-  },
+// 6. Bookmark / Watchlist Icon
+export function BookmarkIcon({ color = '#FFFFFF', size = 18, filled = false }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M19 21L12 16.5L5 21V5C5 3.89543 5.89543 3 7 3H17C18.1046 3 19 3.89543 19 5V21Z"
+        fill={filled ? color : 'none'}
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
-  checkMark: {
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    transform: [{ rotate: '-45deg' }],
-    marginTop: -2,
-  },
+// 7. Play Icon
+export function PlayIcon({ color = '#FFFFFF', size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polygon
+        points="6 4 20 12 6 20 6 4"
+        fill={color}
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
-  rowLayout: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  speakerBase: {
-    borderTopLeftRadius: 2,
-    borderBottomLeftRadius: 2,
-  },
-  speakerCone: {
-    width: 0,
-    height: 0,
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-  },
-  speakerWave: {
-    borderRightWidth: 2,
-    borderTopRightRadius: 8,
-    borderBottomRightRadius: 8,
-    marginLeft: 2,
-  },
-  speakerMuteCross: {
-    fontWeight: '900',
-    marginLeft: 2,
-    marginTop: -2,
-  },
-  ccBox: {
-    borderWidth: 1.5,
-    borderRadius: 3,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  ccText: {
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  settingsOuter: {
-    borderWidth: 1.8,
-    borderRadius: 12,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  settingsInner: {
-    borderRadius: 8,
-  },
-  episodesWrap: {
-    justifyContent: 'space-between',
-    paddingVertical: 2,
-  },
-  epLine: {
-    borderRadius: 1,
-  },
-});
+// 8. Pause Icon
+export function PauseIcon({ color = '#FFFFFF', size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x="5" y="4" width="4.5" height="16" rx="1.5" fill={color} />
+      <Rect x="14.5" y="4" width="4.5" height="16" rx="1.5" fill={color} />
+    </Svg>
+  );
+}
+
+// 9. Back Navigation Icon (Chevron Left)
+export function BackIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M15 19L8 12L15 5"
+        stroke={color}
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// 10. Volume Icon
+export function VolumeIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polygon
+        points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+        fill={color}
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M15.54 8.46C16.48 9.4 17 10.68 17 12C17 13.32 16.48 14.6 15.54 15.54"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+      <Path
+        d="M19.07 4.93C20.94 6.8 22 9.33 22 12C22 14.67 20.94 17.2 19.07 19.07"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+// 11. Volume Mute Icon
+export function VolumeMuteIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polygon
+        points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+        fill={color}
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+      <Line x1="22" y1="9" x2="16" y2="15" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+      <Line x1="16" y1="9" x2="22" y2="15" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// 12. Replay 10 Seconds Icon
+export function Replay10Icon({ color = '#FFFFFF', size = 24 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 12C3 7.03 7.03 3 12 3C16.97 3 21 7.03 21 12C21 16.97 16.97 21 12 21C8.25 21 5.06 18.7 3.73 15.4"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+      <Polyline points="3 4 3 10 9 10" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      {/* 10 text center */}
+      <Path d="M9.5 10V15M13.5 10H15.5C16.05 10 16.5 10.45 16.5 11V14C16.5 14.55 16.05 15 15.5 15H13.5C12.95 15 12.5 14.55 12.5 14V11C12.5 10.45 12.95 10 13.5 10Z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// 13. Forward 10 Seconds Icon
+export function Forward10Icon({ color = '#FFFFFF', size = 24 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M21 12C21 7.03 16.97 3 12 3C7.03 3 3 7.03 3 12C3 16.97 7.03 21 12 21C15.75 21 18.94 18.7 20.27 15.4"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+      <Polyline points="21 4 21 10 15 10" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      {/* 10 text center */}
+      <Path d="M8.5 10V15M12.5 10H14.5C15.05 10 15.5 10.45 15.5 11V14C15.5 14.55 15.05 15 14.5 15H12.5C11.95 15 11.5 14.55 11.5 14V11C11.5 10.45 11.95 10 12.5 10Z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// 14. Closed Captions (CC) Icon
+export function CCIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x="2" y="4" width="20" height="16" rx="3" stroke={color} strokeWidth={1.8} />
+      <Path
+        d="M10 9.5C9.5 9 8.8 8.8 8 9C6.9 9.3 6 10.5 6 12C6 13.5 6.9 14.7 8 15C8.8 15.2 9.5 15 10 14.5"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+      <Path
+        d="M18 9.5C17.5 9 16.8 8.8 16 9C14.9 9.3 14 10.5 14 12C14 13.5 14.9 14.7 16 15C16.8 15.2 17.5 15 18 14.5"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+// 15. Subtitle Icon
+export function SubtitleIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return <CCIcon color={color} size={size} />;
+}
+
+// 16. Audio Track Icon
+export function AudioIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M9 18V5L21 3V16" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Circle cx="6" cy="18" r="3" stroke={color} strokeWidth={2} fill={color} />
+      <Circle cx="18" cy="16" r="3" stroke={color} strokeWidth={2} fill={color} />
+    </Svg>
+  );
+}
+
+// 17. Settings (Gear) Icon
+export function SettingsIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth={2} />
+      <Path
+        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// 18. Episodes / Playlist Icon
+export function EpisodesIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M4 6H20M4 12H20M4 18H13" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// 19. Fullscreen Icon
+export function FullscreenIcon({ color = '#FFFFFF', size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// 20. Exit Fullscreen Icon
+export function ExitFullscreenIcon({ color = '#FFFFFF', size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M4 14h6m0 0v6m0-6L3 21m17-7h-6m0 0v6m0-6l7 7M4 10h6m0 0V4m0 6L3 3m17 7h-6m0 0V4m0 6l7-7" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// 21. Chevron Down Icon
+export function ChevronDownIcon({ color = '#FFFFFF', size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M6 9L12 15L18 9" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// 22. Checkmark Icon
+export function CheckIcon({ color = '#4ADE80', size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polyline points="20 6 9 17 4 12" stroke={color} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// 23. Plus Icon
+export function PlusIcon({ color = '#FFFFFF', size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 5V19M5 12H19" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+    </Svg>
+  );
+}

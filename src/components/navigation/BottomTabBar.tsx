@@ -15,7 +15,7 @@ interface TabButtonProps {
   isActive: boolean;
   onPress: () => void;
   hasPreferredFocus?: boolean;
-  children: (color: string) => React.ReactNode;
+  children: (color: string, active: boolean) => React.ReactNode;
 }
 
 function TabButton({
@@ -26,11 +26,12 @@ function TabButton({
   children,
 }: TabButtonProps) {
   const [isFocused, setIsFocused] = useState(false);
-  const iconColor = isActive || isFocused ? '#FFFFFF' : '#4E5569';
+  const activeOrFocused = isActive || isFocused;
+  const iconColor = activeOrFocused ? '#FFFFFF' : '#64748B';
 
   return (
     <TouchableOpacity
-      activeOpacity={0.8}
+      activeOpacity={0.75}
       focusable={true}
       hasTVPreferredFocus={hasPreferredFocus}
       onFocus={() => setIsFocused(true)}
@@ -40,10 +41,14 @@ function TabButton({
         styles.tabItem,
         isFocused && styles.tabItemFocused,
       ]}>
-      <View style={styles.tabIconBox}>
-        {children(iconColor)}
+      <View style={[styles.tabIconBox, isActive && styles.tabIconBoxActive]}>
+        {children(iconColor, isActive)}
       </View>
-      <Text style={[styles.tabLabel, (isActive || isFocused) && styles.tabLabelActive]}>
+      <Text
+        style={[
+          styles.tabLabel,
+          activeOrFocused && styles.tabLabelActive,
+        ]}>
         {label}
       </Text>
       {isActive && <View style={styles.tabDot} />}
@@ -59,35 +64,35 @@ export function BottomTabBar({ currentTab, onTabSelect, bottomInset }: BottomTab
         isActive={currentTab === 'home'}
         onPress={() => onTabSelect('home')}
         hasPreferredFocus={currentTab === 'home'}>
-        {color => <HomeIcon color={color} size={20} />}
+        {(color, active) => <HomeIcon color={color} size={22} filled={active} />}
       </TabButton>
 
       <TabButton
         label="Movies"
         isActive={currentTab === 'movie'}
         onPress={() => onTabSelect('movie')}>
-        {color => <MovieIcon color={color} size={20} />}
+        {(color, active) => <MovieIcon color={color} size={22} filled={active} />}
       </TabButton>
 
       <TabButton
         label="Series"
         isActive={currentTab === 'tv'}
         onPress={() => onTabSelect('tv')}>
-        {color => <TvIcon color={color} size={20} />}
+        {(color, active) => <TvIcon color={color} size={22} filled={active} />}
       </TabButton>
 
       <TabButton
         label="Anime"
         isActive={currentTab === 'anime'}
         onPress={() => onTabSelect('anime')}>
-        {color => <AnimeIcon color={color} size={20} />}
+        {(color, active) => <AnimeIcon color={color} size={22} filled={active} />}
       </TabButton>
 
       <TabButton
         label="Search"
         isActive={currentTab === 'search'}
         onPress={() => onTabSelect('search')}>
-        {color => <SearchIcon color={color} size={19} />}
+        {(color, active) => <SearchIcon color={color} size={21} filled={active} />}
       </TabButton>
     </View>
   );
@@ -102,34 +107,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: 'rgba(8, 9, 13, 0.96)',
     borderTopWidth: 1,
-    borderTopColor: '#161824',
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
     paddingTop: 8,
     justifyContent: 'space-around',
+    alignItems: 'center',
   },
   tabItem: {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    paddingVertical: 3,
-    paddingHorizontal: 4,
-    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 10,
   },
   tabItemFocused: {
-    backgroundColor: '#1E2336',
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
-    transform: [{ scale: 1.06 }],
+    transform: [{ scale: 1.08 }],
   },
   tabIconBox: {
-    width: 26,
-    height: 24,
+    width: 28,
+    height: 26,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  tabIconBoxActive: {
+    transform: [{ scale: 1.05 }],
+  },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '600',
-    color: '#60677D',
+    color: '#64748B',
     marginTop: 3,
     letterSpacing: 0.2,
   },
@@ -138,8 +147,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tabDot: {
-    width: 3.5,
-    height: 3.5,
+    width: 4,
+    height: 4,
     borderRadius: 2,
     backgroundColor: '#E50914',
     marginTop: 3,
