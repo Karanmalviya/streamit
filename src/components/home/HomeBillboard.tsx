@@ -104,10 +104,11 @@ const HeroSlide = memo(function HeroSlideComponent({
       try {
         const data = JSON.parse(event.nativeEvent.data);
         if (data.event === 'ended' || data.event === 'error') {
+          setShowTrailer(false);
           onTrailerEnded();
         }
       } catch {
-        // Ignore JSON parse errors
+        setShowTrailer(false);
       }
     },
     [onTrailerEnded]
@@ -272,6 +273,10 @@ const HeroSlide = memo(function HeroSlideComponent({
             allowsInlineMediaPlayback={true}
             pointerEvents="none"
             onMessage={handleWebViewMessage}
+            onError={() => {
+              setShowTrailer(false);
+              onTrailerEnded();
+            }}
           />
         </View>
       ) : null}
