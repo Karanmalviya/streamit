@@ -23,6 +23,7 @@ interface SearchScreenProps {
   onSearchChange: (text: string, type: SearchFilterType) => void;
   onTypeChange: (type: SearchFilterType) => void;
   onSelectMedia: (item: MediaItem) => void;
+  onScroll?: (e: any) => void;
 }
 
 export function SearchScreen({
@@ -35,6 +36,7 @@ export function SearchScreen({
   onSearchChange,
   onTypeChange,
   onSelectMedia,
+  onScroll,
 }: SearchScreenProps) {
   const types: { id: SearchFilterType; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -44,7 +46,7 @@ export function SearchScreen({
   ];
 
   return (
-    <View style={[styles.container, { paddingTop: topInset + 46 }]}>
+    <View style={[styles.container, { paddingTop: topInset + 56 }]}>
       {/* Search Input Box */}
       <View style={styles.searchBarBox}>
         <SearchIcon color="#70768A" size={17} />
@@ -97,6 +99,7 @@ export function SearchScreen({
           onRefresh={() => {}}
           onLoadMore={() => {}}
           onSelectMedia={onSelectMedia}
+          onScroll={onScroll}
           emptyText={`No results found for "${searchQuery}"`}
         />
       ) : (
@@ -112,6 +115,7 @@ export function SearchScreen({
             onRefresh={() => {}}
             onLoadMore={() => {}}
             onSelectMedia={onSelectMedia}
+            onScroll={onScroll}
           />
         </View>
       )}
@@ -130,10 +134,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#13151F',
+    backgroundColor: '#0A0C11',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#212534',
+    borderColor: '#171B24',
     height: 42,
   },
   searchTextInput: {
@@ -165,18 +169,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 16,
-    backgroundColor: '#12141C',
+    backgroundColor: '#0A0C11',
     borderWidth: 1,
-    borderColor: '#1D212E',
+    borderColor: '#151922',
   },
   typeChipActive: {
-    backgroundColor: '#202534',
-    borderColor: '#363E56',
+    backgroundColor: '#1C212E',
+    borderColor: '#2D354A',
   },
   typeChipFocused: {
     borderColor: '#FFFFFF',
     borderWidth: 1.5,
-    backgroundColor: '#282F45',
+    backgroundColor: '#242A3B',
   },
   typeChipText: {
     color: '#656D84',

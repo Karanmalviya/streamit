@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, StatusBar, BackHandler, StyleSheet } from 'react-native';
 import {
   SafeAreaProvider,
@@ -102,6 +102,25 @@ function MainAppContent(): React.JSX.Element {
   // Watchlist State
   const [watchlist, setWatchlist] = useState<MediaItem[]>([]);
   const [watchlistModalVisible, setWatchlistModalVisible] = useState(false);
+
+  // Scroll Navbar Visibility State
+  const [navbarVisible, setNavbarVisible] = useState(true);
+  const lastScrollY = useRef(0);
+
+  const handleScroll = useCallback((event: any) => {
+    const currentOffset = event?.nativeEvent?.contentOffset?.y ?? 0;
+    const diff = currentOffset - lastScrollY.current;
+
+    if (currentOffset <= 20) {
+      setNavbarVisible(true);
+    } else if (diff > 12 && currentOffset > 60) {
+      setNavbarVisible(false); // scrolling down
+    } else if (diff < -10) {
+      setNavbarVisible(true);  // scrolling up
+    }
+
+    lastScrollY.current = currentOffset;
+  }, []);
 
   // Studio / Network Hub State
   const [selectedStudio, setSelectedStudio] = useState<StudioInfo | null>(null);
@@ -332,6 +351,8 @@ function MainAppContent(): React.JSX.Element {
   const handleTabSwitch = useCallback((tab: NavTab) => {
     setCurrentTab(tab);
     setDetailMedia(null);
+    setNavbarVisible(true);
+    lastScrollY.current = 0;
     if (tab === 'movie' || tab === 'tv' || tab === 'anime') {
       setActiveSubCat('trending');
     }
@@ -387,6 +408,7 @@ function MainAppContent(): React.JSX.Element {
       {!activePlayback && !detailMedia && (
         <TopNavbar
           topInset={insets.top}
+          visible={navbarVisible}
         />
       )}
 
@@ -431,6 +453,7 @@ function MainAppContent(): React.JSX.Element {
                 onSelectStudio={handleSelectStudio}
                 onToggleWatchlist={toggleWatchlist}
                 isInWatchlist={isInWatchlist}
+                onScroll={handleScroll}
               />
             )}
 
@@ -454,6 +477,7 @@ function MainAppContent(): React.JSX.Element {
                   }
                 }}
                 onSelectMedia={handleOpenDetailMedia}
+                onScroll={handleScroll}
               />
             )}
 
@@ -473,6 +497,7 @@ function MainAppContent(): React.JSX.Element {
                   }
                 }}
                 onSelectMedia={handleOpenDetailMedia}
+                onScroll={handleScroll}
               />
             )}
           </>
@@ -518,7 +543,7 @@ function MainAppContent(): React.JSX.Element {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#08090D',
+    backgroundColor: '#040406',
   },
   screenContainer: {
     flex: 1,

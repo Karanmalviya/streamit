@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ interface PosterGridProps {
   onLoadMore?: () => void;
   onSelectMedia: (item: MediaItem) => void;
   emptyText?: string;
+  onScroll?: (e: any) => void;
 }
 
 export function PosterGrid({
@@ -35,12 +36,49 @@ export function PosterGrid({
   onLoadMore = () => {},
   onSelectMedia,
   emptyText = 'No titles found',
+  onScroll,
 }: PosterGridProps) {
   const { width: screenWidth, gridColumns } = useDeviceMode();
   const cardWidth = Math.floor(
     (screenWidth - GRID_PADDING - GRID_GAP * (gridColumns - 1)) / gridColumns
   );
   const cardHeight = Math.floor(cardWidth * 1.5);
+  const rowHeight = cardHeight + GRID_GAP;
+
+  const renderItem = useCallback(
+    ({ item }: { item: MediaItem }) => (
+      <TVFocusable
+        style={[styles.card, { width: cardWidth, height: cardHeight }]}
+        focusedStyle={styles.cardFocused}
+        onPress={() => onSelectMedia(item)}>
+        {item.poster ? (
+          <Image source={{ uri: item.poster }} style={styles.posterImg} resizeMode="cover" />
+        ) : (
+          <View style={styles.fallbackPoster}>
+            <Text style={styles.fallbackText}>{item.title}</Text>
+          </View>
+        )}
+      </TVFocusable>
+    ),
+    [cardWidth, cardHeight, onSelectMedia]
+  );
+
+  const getItemLayout = useCallback(
+    (_: any, index: number) => {
+      const rowIndex = Math.floor(index / gridColumns);
+      return {
+        length: rowHeight,
+        offset: rowHeight * rowIndex,
+        index,
+      };
+    },
+    [gridColumns, rowHeight]
+  );
+
+  const keyExtractor = useCallback(
+    (item: MediaItem) => `grid-${item.id}-${item.type}`,
+    []
+  );
 
   if (loading && !refreshing && items.length === 0) {
     return <GridSkeleton />;
@@ -50,29 +88,24 @@ export function PosterGrid({
     <FlatList
       key={`grid-cols-${gridColumns}`}
       data={items}
-      keyExtractor={item => `grid-${item.id}-${item.type}`}
+      keyExtractor={keyExtractor}
       numColumns={gridColumns}
       contentContainerStyle={styles.content}
       columnWrapperStyle={styles.row}
+      getItemLayout={getItemLayout}
+      initialNumToRender={10}
+      maxToRenderPerBatch={8}
+      windowSize={4}
+      updateCellsBatchingPeriod={50}
+      removeClippedSubviews={true}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFFFFF" />
       }
       onEndReached={onLoadMore}
       onEndReachedThreshold={0.5}
-      renderItem={({ item }) => (
-        <TVFocusable
-          style={[styles.card, { width: cardWidth, height: cardHeight }]}
-          focusedStyle={styles.cardFocused}
-          onPress={() => onSelectMedia(item)}>
-          {item.poster ? (
-            <Image source={{ uri: item.poster }} style={styles.posterImg} resizeMode="cover" />
-          ) : (
-            <View style={styles.fallbackPoster}>
-              <Text style={styles.fallbackText}>{item.title}</Text>
-            </View>
-          )}
-        </TVFocusable>
-      )}
+      renderItem={renderItem}
       ListEmptyComponent={
         <View style={styles.centerContainer}>
           <Text style={styles.emptyText}>{emptyText}</Text>
@@ -102,7 +135,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 5,
     overflow: 'hidden',
-    backgroundColor: '#12141C',
+    backgroundColor: '#07080B',
   },
   cardFocused: {
     borderColor: '#FFFFFF',
@@ -118,7 +151,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#141622',
+    backgroundColor: '#0A0B0E',
     padding: 8,
   },
   fallbackText: {

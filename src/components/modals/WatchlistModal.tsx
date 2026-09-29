@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheetContainer: {
-    backgroundColor: '#0F1118',
+    backgroundColor: '#040406',
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     maxHeight: '90%',
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#181A24',
+    borderBottomColor: '#0F1118',
   },
   title: {
     fontSize: 18,
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   closeBtnFocused: {
     borderColor: '#FFFFFF',
     borderWidth: 2,
-    backgroundColor: '#2A3048',
+    backgroundColor: '#1E2333',
   },
   closeText: {
     color: '#FFFFFF',
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
   gridCard: {
     borderRadius: 5,
     overflow: 'hidden',
-    backgroundColor: '#12141C',
+    backgroundColor: '#07080B',
   },
   cardFocused: {
     borderColor: '#FFFFFF',
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#141622',
+    backgroundColor: '#0A0B0E',
     padding: 8,
   },
   fallbackText: {

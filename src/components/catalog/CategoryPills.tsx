@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
   header: {
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#12141C',
+    borderBottomColor: '#0E1017',
   },
   scroll: {
     paddingHorizontal: 12,
@@ -51,9 +51,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#12141E',
+    backgroundColor: '#0A0C11',
     borderWidth: 1,
-    borderColor: '#1C2030',
+    borderColor: '#151922',
   },
   pillActive: {
     backgroundColor: '#FFFFFF',
@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
   pillFocused: {
     borderColor: '#FFFFFF',
     borderWidth: 2,
-    backgroundColor: '#2A3048',
+    backgroundColor: '#1E2333',
   },
   pillText: {
     fontSize: 12,

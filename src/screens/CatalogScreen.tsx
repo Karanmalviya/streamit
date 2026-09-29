@@ -16,6 +16,7 @@ interface CatalogScreenProps {
   onRefresh: () => void;
   onLoadMore: () => void;
   onSelectMedia: (item: MediaItem) => void;
+  onScroll?: (e: any) => void;
 }
 
 export function CatalogScreen({
@@ -30,9 +31,10 @@ export function CatalogScreen({
   onRefresh,
   onLoadMore,
   onSelectMedia,
+  onScroll,
 }: CatalogScreenProps) {
   return (
-    <View style={[styles.container, { paddingTop: topInset + 46 }]}>
+    <View style={[styles.container, { paddingTop: topInset + 56 }]}>
       {/* Subcategories Horizontal Filter Pills */}
       <CategoryPills
         categories={categories}
@@ -49,6 +51,7 @@ export function CatalogScreen({
         onRefresh={onRefresh}
         onLoadMore={onLoadMore}
         onSelectMedia={onSelectMedia}
+        onScroll={onScroll}
         emptyText="No titles found in this category"
       />
     </View>

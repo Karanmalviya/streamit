@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
   },
   viewAllBtnFocused: {
     backgroundColor: '#FFFFFF',
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     height: POSTER_HEIGHT,
     borderRadius: 6,
     overflow: 'hidden',
-    backgroundColor: '#12141C',
+    backgroundColor: '#07080B',
     marginRight: POSTER_GAP,
   },
   cardFocused: {
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#141622',
+    backgroundColor: '#0A0B0E',
     padding: 8,
   },
   fallbackText: {

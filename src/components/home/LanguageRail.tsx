@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
   },
   viewAllBtnFocused: {
     backgroundColor: '#FFFFFF',
@@ -258,8 +258,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    backgroundColor: '#111520',
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: '#07080D',
     marginRight: 12,
   },
   cardTV: {

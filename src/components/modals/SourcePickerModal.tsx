@@ -160,10 +160,10 @@ const styles = StyleSheet.create({
   sheet: {
     width: '100%',
     maxWidth: 540,
-    backgroundColor: '#12141C',
+    backgroundColor: '#07080D',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.06)',
     overflow: 'hidden',
     maxHeight: '80%',
   },
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   headerTitle: {
     color: '#FFFFFF',

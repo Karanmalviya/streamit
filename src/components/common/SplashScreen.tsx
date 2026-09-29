@@ -77,7 +77,7 @@ export const SplashScreen = memo(function SplashScreenComponent({
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#08090D',
+    backgroundColor: '#040406',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 9999,

@@ -1595,7 +1595,7 @@ const styles = StyleSheet.create({
   // Bottom panel
   bottomPanel: {
     flex: 1,
-    backgroundColor: '#0A0A0F',
+    backgroundColor: '#000000',
   },
 
   // Title row
@@ -1752,7 +1752,7 @@ const styles = StyleSheet.create({
     width: 95,
     height: 140,
     borderRadius: 6,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#0A0C12',
   },
   relatedTitle: {
     color: '#94A3B8',
@@ -1858,7 +1858,7 @@ const styles = StyleSheet.create({
   epCardStill: {
     width: '100%',
     height: 84,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#0A0C12',
   },
   epCardDetails: {
     padding: 8,

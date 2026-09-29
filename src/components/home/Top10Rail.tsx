@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
   },
   viewAllBtnFocused: {
     backgroundColor: '#FFFFFF',
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   bigNumber: {
     fontSize: 94,
     fontWeight: '900',
-    color: '#1E2333',
+    color: '#13151D',
     lineHeight: 96,
     position: 'absolute',
     left: -4,
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
     height: 155,
     borderRadius: 6,
     overflow: 'hidden',
-    backgroundColor: '#161824',
+    backgroundColor: '#07080B',
     marginLeft: 38,
     zIndex: 2,
     elevation: 4,
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#141622',
+    backgroundColor: '#0A0B0E',
     padding: 8,
   },
   fallbackText: {

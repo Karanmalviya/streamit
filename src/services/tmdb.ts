@@ -69,11 +69,11 @@ function formatItem(raw: any, type: 'movie' | 'tv' | 'anime'): MediaItem {
     year,
     rating: typeof raw.vote_average === 'number' ? Number(raw.vote_average.toFixed(1)) : 0,
     voteCount: raw.vote_count || 0,
-    poster: raw.poster_path ? `${ENV.TMDB_IMAGE_BASE_URL}/w500${raw.poster_path}` : null,
+    poster: raw.poster_path ? `${ENV.TMDB_IMAGE_BASE_URL}/w342${raw.poster_path}` : null,
     backdrop: raw.backdrop_path
-      ? `${ENV.TMDB_IMAGE_BASE_URL}/w1280${raw.backdrop_path}`
+      ? `${ENV.TMDB_IMAGE_BASE_URL}/w780${raw.backdrop_path}`
       : raw.poster_path
-      ? `${ENV.TMDB_IMAGE_BASE_URL}/w780${raw.poster_path}`
+      ? `${ENV.TMDB_IMAGE_BASE_URL}/w500${raw.poster_path}`
       : null,
     overview: raw.overview || 'No synopsis available.',
     language: (raw.original_language || 'en').toUpperCase(),
@@ -394,22 +394,43 @@ export async function fetchMediaLogo(mediaId: number, type: 'movie' | 'tv' | 'an
   }
 }
 
+const trailerCache = new Map<string, string | null>();
+
 /**
- * Fetches official trailer video for a movie, TV show, or anime.
- * Uses ENV.TRAILER_API_BASE_URL (IMDb 1080p MP4) as primary source,
- * falling back to TMDB YouTube trailer key.
+ * Fetches official direct MP4 trailer video from IMDb via bingr API.
+ * Returns { url: string } if available, or null (which displays the backdrop image only).
  */
 export async function fetchMediaTrailer(
   mediaId: number,
-  type: 'movie' | 'tv' | 'anime'
-): Promise<{ url?: string | null; key?: string | null } | null> {
+  type: 'movie' | 'tv' | 'anime',
+  knownImdbId?: string
+): Promise<{ url?: string | null } | null> {
   const tmdbType = type === 'tv' ? 'tv' : 'movie';
+  const cacheKey = `${tmdbType}-${mediaId}`;
 
-  // 1. Direct 1080p stream API (loaded from .env)
+  if (trailerCache.has(cacheKey)) {
+    const cached = trailerCache.get(cacheKey);
+    return cached ? { url: cached } : null;
+  }
+
   try {
+    let imdbId = knownImdbId;
+
+    // 1. Resolve IMDb ID from TMDB if not already provided
+    if (!imdbId) {
+      const extRes = await tmdbFetch(`/${tmdbType}/${mediaId}/external_ids?api_key=${ENV.TMDB_API_KEY}`);
+      imdbId = extRes?.imdb_id;
+    }
+
+    if (!imdbId) {
+      trailerCache.set(cacheKey, null);
+      return null;
+    }
+
+    // 2. Fetch direct MP4 from bingr IMDb trailer API
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4500);
-    const res = await fetch(`${ENV.TRAILER_API_BASE_URL}/${tmdbType}/${mediaId}`, {
+    const res = await fetch(`https://api.bingr.one/api/trailer/imdb/${imdbId}`, {
       headers: {
         Accept: 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -417,45 +438,26 @@ export async function fetchMediaTrailer(
       signal: controller.signal,
     });
     clearTimeout(timeout);
+
     if (res.ok) {
       const data = await res.json();
-      if (data && typeof data.url === 'string' && data.url.startsWith('http')) {
-        return { url: data.url };
+      const directUrl =
+        data?.best?.url ||
+        data?.all?.find((v: any) => v?.quality === '1080p')?.url ||
+        data?.all?.find((v: any) => v?.quality === '720p')?.url ||
+        data?.all?.[0]?.url ||
+        data?.mp4;
+
+      if (directUrl && typeof directUrl === 'string' && directUrl.startsWith('http')) {
+        trailerCache.set(cacheKey, directUrl);
+        return { url: directUrl };
       }
     }
   } catch {
-    // Proceed to fallback
+    // Gracefully fall back to showing the backdrop image only
   }
 
-  // 2. TMDB YouTube trailer fallback
-  try {
-    const data = await tmdbFetch(`/${tmdbType}/${mediaId}/videos?api_key=${ENV.TMDB_API_KEY}&language=en-US`);
-    let results: any[] = data.results || [];
-
-    if (results.length === 0) {
-      const allData = await tmdbFetch(`/${tmdbType}/${mediaId}/videos?api_key=${ENV.TMDB_API_KEY}`);
-      results = allData.results || [];
-    }
-
-    if (results.length > 0) {
-      const yt = results.filter((v: any) => v.site === 'YouTube' && v.key);
-      if (yt.length > 0) {
-        const officialTrailer = yt.find((v: any) => v.type === 'Trailer' && v.official);
-        if (officialTrailer) return { key: officialTrailer.key };
-
-        const anyTrailer = yt.find((v: any) => v.type === 'Trailer');
-        if (anyTrailer) return { key: anyTrailer.key };
-
-        const teaserOrClip = yt.find((v: any) => v.type === 'Teaser' || v.type === 'Clip');
-        if (teaserOrClip) return { key: teaserOrClip.key };
-
-        return { key: yt[0]?.key || null };
-      }
-    }
-  } catch {
-    // Ignore fallback errors
-  }
-
+  trailerCache.set(cacheKey, null);
   return null;
 }
 
@@ -550,7 +552,6 @@ export async function fetchHomeFeed(): Promise<HomeFeedData> {
           ...item,
           titleLogo,
           trailerUrl: trailerData?.url || null,
-          trailerKey: trailerData?.key || null,
         };
       } catch {
         return item;

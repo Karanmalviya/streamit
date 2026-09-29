@@ -176,7 +176,7 @@ export function GenreContentModal({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#07090E',
+    backgroundColor: '#040406',
   },
   header: {
     paddingHorizontal: 16,
@@ -184,9 +184,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    backgroundColor: '#0D1017',
+    backgroundColor: '#07080D',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   headerWide: {
     paddingHorizontal: 28,

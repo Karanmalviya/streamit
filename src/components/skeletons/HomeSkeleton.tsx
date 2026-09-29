@@ -11,7 +11,7 @@ export function HomeSkeleton({ topInset }: HomeSkeletonProps) {
   const { width: screenWidth, height: screenHeight, isLandscape, isTV } = useDeviceMode();
 
   const isWide = isTV || isLandscape;
-  const navbarHeight = isWide ? 0 : topInset + 48;
+  const navbarHeight = isWide ? 0 : topInset + 56;
   const posterHeight = isWide
     ? Math.round(Math.min(screenHeight * 0.74, 480))
     : Math.round(screenWidth * (9 / 16));

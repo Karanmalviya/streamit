@@ -53,6 +53,6 @@ export function SkeletonBox({
 
 const styles = StyleSheet.create({
   box: {
-    backgroundColor: '#262A3B',
+    backgroundColor: '#141720',
   },
 });

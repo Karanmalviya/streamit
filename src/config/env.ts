@@ -17,5 +17,5 @@ export const ENV = {
     'https://image.tmdb.org/t/p',
   TRAILER_API_BASE_URL:
     (typeof process !== 'undefined' && process.env?.VITE_TRAILER_API_BASE_URL) ||
-    'https://api.stellar.gdn/api/trailers',
+    'https://api.bingr.one/api/trailer/imdb',
 };

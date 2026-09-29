@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   BackHandler,
 } from 'react-native';
 import Video, { ResizeMode } from 'react-native-video';
-import { WebView } from 'react-native-webview';
 import {
   MediaItem,
   TVSeason,
@@ -76,7 +75,6 @@ export function DetailScreen({
 
   // Trailer & Media Assets State
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
-  const [trailerKey, setTrailerKey] = useState<string | null>(null);
   const [titleLogo, setTitleLogo] = useState<string | null>(null);
   const [failedLogo, setFailedLogo] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
@@ -103,8 +101,6 @@ export function DetailScreen({
   // Related Content
   const [similarMedia, setSimilarMedia] = useState<MediaItem[]>([]);
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
-
-  const webViewRef = useRef<any>(null);
 
   // Top Navbar space identical to HomePage, with the banner/trailer starting cleanly below it
   const navbarHeight = isWide ? 56 : topInset + 48;
@@ -141,15 +137,13 @@ export function DetailScreen({
     setFailedLogo(false);
 
     // 1. Trailer fetch & 2s delay timer
-    if (currentMedia.trailerUrl || currentMedia.trailerKey) {
-      setTrailerUrl(currentMedia.trailerUrl || null);
-      setTrailerKey(currentMedia.trailerKey || null);
+    if (currentMedia.trailerUrl) {
+      setTrailerUrl(currentMedia.trailerUrl);
     } else {
       fetchMediaTrailer(currentMedia.id, currentMedia.type)
         .then(tData => {
-          if (isMounted && tData) {
-            setTrailerUrl(tData.url || null);
-            setTrailerKey(tData.key || null);
+          if (isMounted && tData?.url) {
+            setTrailerUrl(tData.url);
           }
         })
         .catch(() => {});
@@ -270,16 +264,6 @@ export function DetailScreen({
     };
   }, [currentMedia, selectedSeason]);
 
-  // Sync Mute State with Embedded YouTube Trailer
-  useEffect(() => {
-    if (showTrailer && webViewRef.current) {
-      const js = isMuted
-        ? 'if (window.__ytPlayer && window.__ytPlayer.mute) { window.__ytPlayer.mute(); } true;'
-        : 'if (window.__ytPlayer && window.__ytPlayer.unMute) { window.__ytPlayer.unMute(); window.__ytPlayer.setVolume(100); } true;';
-      webViewRef.current.injectJavaScript(js);
-    }
-  }, [isMuted, showTrailer]);
-
   const toggleMute = useCallback(() => {
     setIsMuted(prev => !prev);
   }, []);
@@ -287,20 +271,6 @@ export function DetailScreen({
   const handleTrailerEnded = useCallback(() => {
     setShowTrailer(false);
   }, []);
-
-  const handleWebViewMessage = useCallback(
-    (event: any) => {
-      try {
-        const data = JSON.parse(event.nativeEvent.data);
-        if (data.event === 'ended' || data.event === 'error') {
-          handleTrailerEnded();
-        }
-      } catch {
-        // Ignore parse error
-      }
-    },
-    [handleTrailerEnded]
-  );
 
   const handleSelectRelated = useCallback((item: MediaItem) => {
     setCurrentMedia(item);
@@ -310,9 +280,26 @@ export function DetailScreen({
   }, [onSelectMedia]);
 
   const backdropUri = currentMedia.backdrop || currentMedia.poster || undefined;
-  const hasTrailer = Boolean(trailerUrl || trailerKey);
-  const displayCertification = extendedDetails?.certification || 'U/A 16+';
+  const displayCertification = useMemo(() => {
+    const raw = extendedDetails?.certification?.trim();
+    if (!raw) return currentMedia.type === 'movie' ? 'U/A 13+' : 'U/A 16+';
+    if (raw === '18+' || raw === 'A' || raw === 'R' || raw === 'TV-MA' || raw === 'NC-17') return 'U/A 18+';
+    if (raw === '16+' || raw === 'TV-14' || raw === '15') return 'U/A 16+';
+    if (raw === '13+' || raw === 'PG-13' || raw === '12') return 'U/A 13+';
+    if (raw === 'U' || raw === 'G' || raw === 'TV-G' || raw === 'TV-Y' || raw === 'PG') return 'U';
+    return raw.startsWith('U/A') ? raw : `U/A ${raw}`;
+  }, [extendedDetails?.certification, currentMedia.type]);
+
   const displayRuntime = extendedDetails?.runtimeFormatted;
+
+  const displayLanguages = useMemo(() => {
+    if (extendedDetails?.spokenLanguages && extendedDetails.spokenLanguages.length > 0) {
+      return extendedDetails.spokenLanguages.slice(0, 3).join(', ');
+    }
+    return currentMedia?.language || 'English';
+  }, [extendedDetails?.spokenLanguages, currentMedia?.language]);
+
+  const hasTrailer = Boolean(trailerUrl);
 
   return (
     <View style={styles.screenRoot}>
@@ -341,20 +328,7 @@ export function DetailScreen({
           />
         </View>
 
-        {hasTrailer ? (
-          <TVFocusable
-            style={styles.roundControlBtn}
-            focusedStyle={styles.btnFocused}
-            onPress={toggleMute}>
-            {isMuted ? (
-              <VolumeMuteIcon color="#FFFFFF" size={16} />
-            ) : (
-              <VolumeIcon color="#FFFFFF" size={16} />
-            )}
-          </TVFocusable>
-        ) : (
-          <View style={styles.navPlaceholderBtn} />
-        )}
+        <View style={styles.navPlaceholderBtn} />
       </View>
 
       <ScrollView
@@ -406,168 +380,72 @@ export function DetailScreen({
             </View>
           ) : null}
 
-          {/* Embedded YouTube Fallback Trailer */}
-          {showTrailer && !trailerUrl && trailerKey ? (
-            <View
-              style={[
-                styles.trailerContainer,
-                {
-                  top: imageTop,
-                  width: '100%',
-                  height: bannerHeight,
-                },
-              ]}
-              pointerEvents="none">
-              <WebView
-                ref={webViewRef}
-                key={`detail-yt-${currentMedia.id}-${trailerKey}`}
-                source={{
-                  html: `
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                      <style>
-                        * { margin: 0; padding: 0; box-sizing: border-box; background: transparent; overflow: hidden; }
-                        html, body {
-                          width: 100%;
-                          height: 100%;
-                          background-color: #08090D;
-                          overflow: hidden;
-                          display: flex;
-                          justify-content: center;
-                          align-items: center;
-                        }
-                        #player {
-                          position: absolute;
-                          top: 50%;
-                          left: 50%;
-                          width: 100vw;
-                          height: 100vh;
-                          min-width: 100%;
-                          min-height: 100%;
-                          transform: translate(-50%, -50%) scale(1.38);
-                          transform-origin: center center;
-                          pointer-events: none;
-                        }
-                      </style>
-                    </head>
-                    <body>
-                      <div id="player"></div>
-                      <script>
-                        var tag = document.createElement('script');
-                        tag.src = "https://www.youtube.com/iframe_api";
-                        var firstScriptTag = document.getElementsByTagName('script')[0];
-                        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-                        function onYouTubeIframeAPIReady() {
-                          window.__ytPlayer = new YT.Player('player', {
-                            height: '100%',
-                            width: '100%',
-                            videoId: '${trailerKey}',
-                            playerVars: {
-                              'autoplay': 1,
-                              'mute': ${isMuted ? 1 : 0},
-                              'controls': 0,
-                              'showinfo': 0,
-                              'rel': 0,
-                              'loop': 1,
-                              'playlist': '${trailerKey}',
-                              'modestbranding': 1,
-                              'playsinline': 1,
-                              'iv_load_policy': 3,
-                              'disablekb': 1,
-                              'fs': 0,
-                              'origin': 'https://www.themoviedb.org'
-                            },
-                            events: {
-                              'onReady': function(e) {
-                                if (${isMuted}) {
-                                  e.target.mute();
-                                } else {
-                                  e.target.unMute();
-                                  e.target.setVolume(100);
-                                }
-                                e.target.playVideo();
-                              },
-                              'onStateChange': function(e) {
-                                if (e.data === 0) {
-                                  if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'ended' }));
-                                }
-                              },
-                              'onError': function(e) {
-                                if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'error' }));
-                              }
-                            }
-                          });
-                        }
-                      </script>
-                    </body>
-                    </html>
-                  `,
-                }}
-                style={styles.webView}
-                originWhitelist={['*']}
-                javaScriptEnabled={true}
-                domStorageEnabled={true}
-                mediaPlaybackRequiresUserAction={false}
-                allowsInlineMediaPlayback={true}
-                pointerEvents="none"
-                onMessage={handleWebViewMessage}
-              />
-            </View>
-          ) : null}
-
           {/* Bottom Lossless GPU Gradient Fade */}
           <View style={styles.bottomOverlayWrap} pointerEvents="none">
             <BillboardFadedOverlay height={fadeHeight} />
           </View>
 
-          {/* Title / Name Image of the Movie or Series Displayed Directly ON the Banner & Trailer */}
-          <View style={[styles.bannerOverlayContent, isWide && styles.bannerOverlayContentWide]} pointerEvents="none">
-            {titleLogo && !failedLogo ? (
-              <Image
-                source={{ uri: titleLogo }}
-                style={[styles.bannerTitleLogoImg, isWide && styles.bannerTitleLogoImgWide]}
-                resizeMode="contain"
-                onError={() => setFailedLogo(true)}
-              />
-            ) : (
-              <Text style={[styles.bannerTitleText, isWide && styles.bannerTitleTextWide]} numberOfLines={2}>
-                {currentMedia.title}
-              </Text>
-            )}
-
-            {extendedDetails?.tagline ? (
-              <Text style={styles.bannerTaglineText} numberOfLines={1}>
-                "{extendedDetails.tagline}"
-              </Text>
-            ) : null}
-          </View>
+          {/* Bottom Right Volume Mute / Unmute Button */}
+          {hasTrailer && showTrailer ? (
+            <View style={[styles.bannerMuteWrap, isWide && styles.bannerMuteWrapWide]}>
+              <TVFocusable
+                style={styles.bannerMuteBtn}
+                focusedStyle={styles.bannerMuteBtnFocused}
+                onPress={toggleMute}>
+                {isMuted ? (
+                  <VolumeMuteIcon color="#FFFFFF" size={16} />
+                ) : (
+                  <VolumeIcon color="#FFFFFF" size={16} />
+                )}
+              </TVFocusable>
+            </View>
+          ) : null}
         </View>
 
         {/* 2. BODY CONTENT SECTION */}
         <View style={[styles.bodyContent, isWide && styles.bodyContentWide]}>
-          {/* Meta Tags Row: Rating, Year, HD Badges, Runtime */}
+          {/* Title / Movie or Series Image Artwork (Centered Cleanly Below Backdrop) */}
+          <View style={styles.titleLogoWrap}>
+            {titleLogo && !failedLogo ? (
+              <Image
+                source={{ uri: titleLogo }}
+                style={[styles.titleLogoImg, isWide && styles.titleLogoImgWide]}
+                resizeMode="contain"
+                onError={() => setFailedLogo(true)}
+              />
+            ) : (
+              <Text style={[styles.titleTextHeading, isWide && styles.titleTextHeadingWide]} numberOfLines={2}>
+                {currentMedia.title}
+              </Text>
+            )}
+          </View>
+
+          {/* Meta Tags Row: Year, U/A 18+ Certification, Duration, Languages, Quality */}
           <View style={styles.metaRow}>
-            <View style={styles.ratingBadge}>
-              <Text style={styles.ratingText}>★ {currentMedia.rating.toFixed(1)}</Text>
-            </View>
             <Text style={styles.metaYear}>{currentMedia.year}</Text>
-            {displayRuntime ? (
-              <Text style={styles.metaRuntime}>{displayRuntime}</Text>
-            ) : null}
+            <View style={styles.metaDot} />
             <View style={styles.tagPill}>
               <Text style={styles.tagPillText}>{displayCertification}</Text>
             </View>
+            {displayRuntime ? (
+              <>
+                <View style={styles.metaDot} />
+                <Text style={styles.metaRuntime}>{displayRuntime}</Text>
+              </>
+            ) : null}
+            {displayLanguages ? (
+              <>
+                <View style={styles.metaDot} />
+                <Text style={styles.metaLanguages} numberOfLines={1}>
+                  {displayLanguages}
+                </Text>
+              </>
+            ) : null}
             <View style={styles.tagPill}>
-              <Text style={styles.tagPillText}>4K ULTRA HD</Text>
+              <Text style={styles.tagPillText}>4K UHD</Text>
             </View>
             <View style={styles.tagPill}>
               <Text style={styles.tagPillText}>DOLBY 5.1</Text>
-            </View>
-            <View style={styles.typeBadge}>
-              <Text style={styles.typeBadgeText}>{currentMedia.type.toUpperCase()}</Text>
             </View>
           </View>
 
@@ -953,7 +831,7 @@ export function DetailScreen({
 const styles = StyleSheet.create({
   screenRoot: {
     flex: 1,
-    backgroundColor: '#08090D',
+    backgroundColor: '#040406',
   },
   topNavbar: {
     position: 'absolute',
@@ -966,9 +844,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 10,
-    backgroundColor: 'rgba(8, 9, 13, 0.98)',
+    backgroundColor: 'rgba(4, 4, 6, 0.96)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   topNavbarBrand: {
     flexDirection: 'row',
@@ -986,11 +864,11 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(20, 24, 35, 0.85)',
+    backgroundColor: 'rgba(10, 12, 18, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   containerScroll: {
     flex: 1,
@@ -1000,20 +878,20 @@ const styles = StyleSheet.create({
   },
   headerWrap: {
     position: 'relative',
-    backgroundColor: '#08090D',
+    backgroundColor: '#040406',
     overflow: 'hidden',
   },
   backdropImage: {
     position: 'absolute',
     left: 0,
     right: 0,
-    backgroundColor: '#111420',
+    backgroundColor: '#040406',
   },
   trailerContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
-    backgroundColor: '#08090D',
+    backgroundColor: '#040406',
     overflow: 'hidden',
   },
   nativeVideo: {
@@ -1023,7 +901,7 @@ const styles = StyleSheet.create({
   webView: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#08090D',
+    backgroundColor: '#000000',
   },
   bottomOverlayWrap: {
     position: 'absolute',
@@ -1031,49 +909,59 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  bannerOverlayContent: {
+  bannerMuteWrap: {
     position: 'absolute',
-    bottom: 14,
-    left: 16,
     right: 16,
-    zIndex: 10,
+    bottom: 14,
+    zIndex: 40,
   },
-  bannerOverlayContentWide: {
-    bottom: 22,
-    left: 24,
-    right: 24,
-    maxWidth: 620,
+  bannerMuteWrapWide: {
+    right: 28,
+    bottom: 18,
   },
-  bannerTitleLogoImg: {
-    width: 230,
-    height: 64,
-    marginBottom: 4,
+  bannerMuteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  bannerTitleLogoImgWide: {
-    width: 300,
-    height: 84,
-    marginBottom: 6,
+  bannerMuteBtnFocused: {
+    borderColor: '#FFFFFF',
+    borderWidth: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    transform: [{ scale: 1.1 }],
   },
-  bannerTitleText: {
+  titleLogoWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    marginTop: 8,
+    width: '100%',
+  },
+  titleLogoImg: {
+    width: 240,
+    height: 70,
+    alignSelf: 'center',
+  },
+  titleLogoImgWide: {
+    width: 320,
+    height: 90,
+    alignSelf: 'center',
+  },
+  titleTextHeading: {
     color: '#FFFFFF',
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: 0.3,
-    textShadowColor: 'rgba(0, 0, 0, 0.95)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
+    textAlign: 'center',
   },
-  bannerTitleTextWide: {
+  titleTextHeadingWide: {
     fontSize: 30,
-  },
-  bannerTaglineText: {
-    color: '#CBD5E1',
-    fontSize: 12,
-    fontStyle: 'italic',
-    marginTop: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.85)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    textAlign: 'center',
   },
   bodyContent: {
     paddingHorizontal: 16,
@@ -1088,12 +976,25 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     flexWrap: 'wrap',
-    marginBottom: 14,
+    marginBottom: 16,
+  },
+  metaDot: {
+    width: 3.5,
+    height: 3.5,
+    borderRadius: 2,
+    backgroundColor: '#64748B',
+    marginHorizontal: 1,
+  },
+  metaLanguages: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    fontWeight: '600',
   },
   ratingBadge: {
-    backgroundColor: '#1E2332',
+    backgroundColor: '#11141E',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4,
@@ -1129,7 +1030,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   typeBadge: {
-    backgroundColor: '#2A334E',
+    backgroundColor: '#1A2136',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 3,
@@ -1164,12 +1065,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#161924',
+    backgroundColor: '#0D0F16',
     paddingVertical: 12,
     borderRadius: 6,
     gap: 6,
     borderWidth: 1,
-    borderColor: '#262D40',
+    borderColor: '#191D2A',
   },
   watchlistBtnActive: {
     borderColor: '#4ADE80',
@@ -1183,10 +1084,10 @@ const styles = StyleSheet.create({
     color: '#4ADE80',
   },
   advisoryContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#1E2333',
+    borderColor: '#12151E',
     padding: 10,
     marginBottom: 16,
   },
@@ -1213,12 +1114,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   advisoryPill: {
-    backgroundColor: '#171B28',
+    backgroundColor: '#0D0F16',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#242C40',
+    borderColor: '#171B26',
   },
   advisoryPillText: {
     color: '#CBD5E1',
@@ -1232,12 +1133,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   genrePill: {
-    backgroundColor: '#141722',
+    backgroundColor: '#0B0D13',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#202538',
+    borderColor: '#151822',
   },
   genrePillText: {
     color: '#9CA3AF',
@@ -1266,7 +1167,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#161924',
+    borderBottomColor: '#10121A',
   },
   crewCol: {
     flex: 1,
@@ -1298,10 +1199,10 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     overflow: 'hidden',
-    backgroundColor: '#1A1E2E',
+    backgroundColor: '#0E1017',
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: '#242C40',
+    borderColor: '#171A24',
   },
   castAvatarImg: {
     width: '100%',
@@ -1312,7 +1213,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#202638',
+    backgroundColor: '#12141C',
   },
   castAvatarInitials: {
     color: '#9CA3AF',
@@ -1368,9 +1269,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 6,
-    backgroundColor: '#141722',
+    backgroundColor: '#0B0D13',
     borderWidth: 1,
-    borderColor: '#22283A',
+    borderColor: '#171A24',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1408,10 +1309,10 @@ const styles = StyleSheet.create({
   },
   episodeCard: {
     flexDirection: 'row',
-    backgroundColor: '#12141F',
+    backgroundColor: '#0A0C12',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#1C2030',
+    borderColor: '#141720',
     overflow: 'hidden',
     padding: 8,
     gap: 10,
@@ -1424,7 +1325,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 4,
     overflow: 'hidden',
-    backgroundColor: '#1A1E2E',
+    backgroundColor: '#0E1017',
     position: 'relative',
   },
   epThumbImg: {
@@ -1436,7 +1337,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#151824',
+    backgroundColor: '#0B0D13',
   },
   epPlayBadge: {
     position: 'absolute',
@@ -1481,10 +1382,10 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   infoTableGrid: {
-    backgroundColor: '#0F121B',
+    backgroundColor: '#080A0F',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#1A2030',
+    borderColor: '#131620',
     padding: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1518,7 +1419,7 @@ const styles = StyleSheet.create({
     width: 110,
     height: 160,
     borderRadius: 6,
-    backgroundColor: '#161924',
+    backgroundColor: '#0A0C12',
     marginBottom: 6,
   },
   relatedRatingBadge: {
@@ -1556,7 +1457,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#161924',
+    borderTopColor: '#10121A',
   },
   footerTmdbId: {
     color: '#4B5267',
@@ -1578,7 +1479,7 @@ const styles = StyleSheet.create({
   cardFocused: {
     borderColor: '#FFFFFF',
     borderWidth: 2,
-    backgroundColor: '#1E2338',
+    backgroundColor: '#161924',
     transform: [{ scale: 1.03 }],
   },
 });

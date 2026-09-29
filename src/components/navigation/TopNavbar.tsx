@@ -1,15 +1,34 @@
-import React, { memo } from 'react';
-import { View, Image, StyleSheet } from 'react-native';
+import React, { memo, useRef, useEffect } from 'react';
+import { View, Image, StyleSheet, Animated } from 'react-native';
 
 interface TopNavbarProps {
   topInset: number;
+  visible?: boolean;
 }
 
 export const TopNavbar = memo(function TopNavbarComponent({
   topInset,
+  visible = true,
 }: TopNavbarProps) {
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(translateY, {
+      toValue: visible ? 0 : -(topInset + 64),
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [visible, topInset, translateY]);
+
   return (
-    <View style={[styles.navbar, { paddingTop: topInset + 6 }]}>
+    <Animated.View
+      style={[
+        styles.navbar,
+        {
+          paddingTop: topInset + 12,
+          transform: [{ translateY }],
+        },
+      ]}>
       <View style={styles.brandRow}>
         <Image
           source={require('../../assets/logo.png')}
@@ -17,7 +36,7 @@ export const TopNavbar = memo(function TopNavbarComponent({
           resizeMode="contain"
         />
       </View>
-    </View>
+    </Animated.View>
   );
 });
 
@@ -31,17 +50,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 10,
-    backgroundColor: 'rgba(8, 9, 13, 0.96)',
+    paddingBottom: 14,
+    backgroundColor: 'rgba(4, 4, 6, 0.96)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   brandLogo: {
-    width: 120,
-    height: 32,
+    width: 130,
+    height: 34,
   },
 });

@@ -7,7 +7,6 @@ import {
   StyleSheet,
 } from 'react-native';
 import Video, { ResizeMode } from 'react-native-video';
-import { WebView } from 'react-native-webview';
 import { MediaItem } from '../../services/tmdb';
 import {
   BillboardFadedOverlay,
@@ -58,7 +57,7 @@ const HeroSlide = memo(function HeroSlideComponent({
   onTrailerEnded,
 }: HeroSlideProps) {
   const [showTrailer, setShowTrailer] = useState(false);
-  const hasTrailer = Boolean(hero.trailerUrl || hero.trailerKey);
+  const hasTrailer = Boolean(hero.trailerUrl);
 
   // Use backdrop artwork for cinematic billboard presentation (fallback to poster if unavailable)
   const imageUri = hero.backdrop || hero.poster || undefined;
@@ -79,18 +78,6 @@ const HeroSlide = memo(function HeroSlideComponent({
     };
   }, [isActive, hasTrailer]);
 
-  const webViewRef = useRef<any>(null);
-
-  // Sync mute/unmute state with embedded YouTube trailer
-  useEffect(() => {
-    if (showTrailer && webViewRef.current) {
-      const js = isMuted
-        ? 'if (window.__ytPlayer && window.__ytPlayer.mute) { window.__ytPlayer.mute(); } true;'
-        : 'if (window.__ytPlayer && window.__ytPlayer.unMute) { window.__ytPlayer.unMute(); window.__ytPlayer.setVolume(100); } true;';
-      webViewRef.current.injectJavaScript(js);
-    }
-  }, [isMuted, showTrailer]);
-
   const handleSelect = useCallback(() => {
     onSelect(hero);
   }, [hero, onSelect]);
@@ -98,21 +85,6 @@ const HeroSlide = memo(function HeroSlideComponent({
   const handleLogoError = useCallback(() => {
     onFailedLogo(hero.id);
   }, [hero.id, onFailedLogo]);
-
-  const handleWebViewMessage = useCallback(
-    (event: any) => {
-      try {
-        const data = JSON.parse(event.nativeEvent.data);
-        if (data.event === 'ended' || data.event === 'error') {
-          setShowTrailer(false);
-          onTrailerEnded();
-        }
-      } catch {
-        setShowTrailer(false);
-      }
-    },
-    [onTrailerEnded]
-  );
 
   return (
     <TVFocusable
@@ -137,7 +109,7 @@ const HeroSlide = memo(function HeroSlideComponent({
         resizeMode="cover"
       />
 
-      {/* 2. Direct MP4 Trailer Video Stream (e.g. IMDb / shegu.st via native ExoPlayer) */}
+      {/* 2. Direct MP4 Trailer Video Stream (via native ExoPlayer) */}
       {isActive && showTrailer && hero.trailerUrl ? (
         <View
           style={[
@@ -162,121 +134,6 @@ const HeroSlide = memo(function HeroSlideComponent({
             ignoreSilentSwitch="ignore"
             onEnd={onTrailerEnded}
             onError={onTrailerEnded}
-          />
-        </View>
-      ) : null}
-
-      {/* 3. YouTube Fallback Trailer (via embedded WebView) */}
-      {isActive && showTrailer && !hero.trailerUrl && hero.trailerKey ? (
-        <View
-          style={[
-            styles.trailerContainer,
-            {
-              top: imageTop,
-              width: screenWidth,
-              height: billboardHeight,
-            },
-          ]}
-          pointerEvents="none">
-          <WebView
-            ref={webViewRef}
-            key={`trailer-yt-${hero.id}-${hero.trailerKey}`}
-            source={{
-              html: `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                  <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; background: transparent; overflow: hidden; }
-                    html, body {
-                      width: 100%;
-                      height: 100%;
-                      background-color: #08090D;
-                      overflow: hidden;
-                      display: flex;
-                      justify-content: center;
-                      align-items: center;
-                    }
-                    #player {
-                      position: absolute;
-                      top: 50%;
-                      left: 50%;
-                      width: 100vw;
-                      height: 100vh;
-                      min-width: 100%;
-                      min-height: 100%;
-                      transform: translate(-50%, -50%) scale(1.38);
-                      transform-origin: center center;
-                      pointer-events: none;
-                    }
-                  </style>
-                </head>
-                <body>
-                  <div id="player"></div>
-                  <script>
-                    var tag = document.createElement('script');
-                    tag.src = "https://www.youtube.com/iframe_api";
-                    var firstScriptTag = document.getElementsByTagName('script')[0];
-                    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-                    function onYouTubeIframeAPIReady() {
-                      window.__ytPlayer = new YT.Player('player', {
-                        height: '100%',
-                        width: '100%',
-                        videoId: '${hero.trailerKey}',
-                        playerVars: {
-                          'autoplay': 1,
-                          'mute': ${isMuted ? 1 : 0},
-                          'controls': 0,
-                          'showinfo': 0,
-                          'rel': 0,
-                          'loop': 0,
-                          'modestbranding': 1,
-                          'playsinline': 1,
-                          'iv_load_policy': 3,
-                          'disablekb': 1,
-                          'fs': 0,
-                          'origin': 'https://www.themoviedb.org'
-                        },
-                        events: {
-                          'onReady': function(e) {
-                            if (${isMuted}) {
-                              e.target.mute();
-                            } else {
-                              e.target.unMute();
-                              e.target.setVolume(100);
-                            }
-                            e.target.playVideo();
-                          },
-                          'onStateChange': function(e) {
-                            if (e.data === 0) {
-                              if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'ended' }));
-                            }
-                          },
-                          'onError': function(e) {
-                            if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'error' }));
-                          }
-                        }
-                      });
-                    }
-                  </script>
-                </body>
-                </html>
-              `,
-            }}
-            style={styles.webView}
-            originWhitelist={['*']}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-            mediaPlaybackRequiresUserAction={false}
-            allowsInlineMediaPlayback={true}
-            pointerEvents="none"
-            onMessage={handleWebViewMessage}
-            onError={() => {
-              setShowTrailer(false);
-              onTrailerEnded();
-            }}
           />
         </View>
       ) : null}
@@ -422,7 +279,7 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
   if (!heroes || !heroes.length) return null;
 
   const isWide = isTV || isLandscape;
-  const navbarHeight = isWide ? 0 : topInset + 48;
+  const navbarHeight = isWide ? 0 : topInset + 56;
   const billboardHeight = isWide
     ? Math.round(Math.min(screenHeight * 0.74, 480))
     : Math.round(screenWidth * (9 / 16));

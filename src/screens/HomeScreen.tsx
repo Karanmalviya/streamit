@@ -24,6 +24,7 @@ interface HomeScreenProps {
   onSelectStudio: (studio: StudioInfo) => void;
   onToggleWatchlist: (item: MediaItem) => void;
   isInWatchlist: (id: number) => boolean;
+  onScroll?: (e: any) => void;
 }
 
 export const HomeScreen = memo(function HomeScreen({
@@ -36,6 +37,7 @@ export const HomeScreen = memo(function HomeScreen({
   onSelectStudio,
   onToggleWatchlist,
   isInWatchlist,
+  onScroll,
 }: HomeScreenProps) {
   const [selectedGenre, setSelectedGenre] = useState<GenreItem | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageItem | null>(null);
@@ -117,6 +119,7 @@ export const HomeScreen = memo(function HomeScreen({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         scrollEventThrottle={16}
+        onScroll={onScroll}
         removeClippedSubviews={false}
         overScrollMode="never"
         refreshControl={
