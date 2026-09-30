@@ -557,13 +557,6 @@ function MainAppContent(): React.JSX.Element {
         onSelectMedia={handleOpenDetailMedia}
       />
 
-      {/* 6. App Update Notification Modal */}
-      <UpdateModal
-        visible={!!updateInfo}
-        updateInfo={updateInfo}
-        onDismiss={() => setUpdateInfo(null)}
-      />
-
       {/* 8. Animated In-App Splash Screen */}
       {splashMounted && (
         <SplashScreen
@@ -571,6 +564,13 @@ function MainAppContent(): React.JSX.Element {
           onFinish={handleSplashFinish}
         />
       )}
+
+      {/* 9. App Update Notification Modal (Topmost) */}
+      <UpdateModal
+        visible={!!updateInfo}
+        updateInfo={updateInfo}
+        onDismiss={() => setUpdateInfo(null)}
+      />
     </View>
   );
 }
