@@ -1,13 +1,12 @@
 {
-  "versionCode": 2,
-  "versionName": "1.1.0",
-  "apkUrl": "https://github.com/Karanmalviya/streamit/releases/download/v1.1.0/Streamit-v1.1.0.apk",
+  "versionCode": 3,
+  "versionName": "1.1.1",
+  "apkUrl": "https://github.com/Karanmalviya/streamit/releases/download/v1.1.1/Streamit-v1.1.1.apk",
   "releaseDate": "Oct 1, 2026",
   "isMandatory": false,
   "changelog": [
-    "Added high-performance direct Native video streaming default",
-    "Improved Android TV and Mobile fullscreen landscape toggle",
-    "Enhanced Detail Screen styling and responsive media metadata",
-    "Performance optimizations and fast provider resolution"
+    "Refined billboard trailer autoplay with full video cover",
+    "Optimized speaker icon visibility and layout",
+    "Performance improvements and UI polish"
   ]
 }

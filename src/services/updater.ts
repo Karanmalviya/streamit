@@ -1,8 +1,8 @@
 import { Linking } from 'react-native';
 
 export const CURRENT_APP_VERSION = {
-  versionCode: 1,
-  versionName: '1.0.0',
+  versionCode: 3,
+  versionName: '1.1.1',
 };
 
 export interface UpdateInfo {
@@ -18,7 +18,7 @@ export interface UpdateInfo {
  * Configure your remote update endpoint URL.
  * Checks the GitHub Releases API directly for latest release tag and .apk asset.
  */
-export const DEFAULT_UPDATE_URL = 'https://api.github.com/repos/karanmalviya/streamit/releases/latest';
+export const DEFAULT_UPDATE_URL='https://api.github.com/repos/karanmalviya/streamit/releases/latest';
 
 /**
  * Checks for updates from the remote endpoint.
