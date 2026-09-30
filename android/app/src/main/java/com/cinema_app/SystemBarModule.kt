@@ -20,6 +20,14 @@ class SystemBarModule(private val context: ReactApplicationContext) : ReactConte
     }
 
     @ReactMethod
+    fun lockPortrait() {
+        val activity = reactApplicationContext.currentActivity ?: return
+        activity.runOnUiThread {
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        }
+    }
+
+    @ReactMethod
     fun unlockOrientation() {
         val activity = reactApplicationContext.currentActivity ?: return
         activity.runOnUiThread {

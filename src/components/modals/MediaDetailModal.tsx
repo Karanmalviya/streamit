@@ -9,9 +9,12 @@ import {
   StyleSheet,
   BackHandler,
   StatusBar,
+  Platform,
+  Share,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Video, { ResizeMode } from 'react-native-video';
+import Video, { ResizeMode, ViewType } from 'react-native-video';
 import {
   MediaItem,
   TVSeason,
@@ -36,6 +39,7 @@ import {
   VolumeIcon,
   VolumeMuteIcon,
   BackIcon,
+  ShareIcon,
 } from '../common/Icons';
 import { BillboardFadedOverlay } from '../common/FadedOverlay';
 import { TVFocusable } from '../common/TVFocusable';
@@ -77,6 +81,9 @@ export function MediaDetailModal({
   const [failedLogo, setFailedLogo] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
+  const [isBannerInView, setIsBannerInView] = useState(true);
+  const [showStickyNav, setShowStickyNav] = useState(false);
+  const navAnim = useRef(new Animated.Value(0)).current;
 
   // Networks & Production Companies
   const [networks, setNetworks] = useState<NetworkOrProvider[]>([]);
@@ -100,16 +107,16 @@ export function MediaDetailModal({
   const [similarMedia, setSimilarMedia] = useState<MediaItem[]>([]);
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
 
-  // Top Navbar space identical to HomePage, with the banner/trailer starting cleanly below it
-  const topInset = Math.max(insets.top, 0);
-  const navbarHeight = isWide ? 56 : topInset + 48;
+  // Full-bleed 16:9 banner with clean status bar clearance
+  const safeStatusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0;
+  const effectiveTopInset = isTV ? 12 : Math.max(insets.top || 0, safeStatusBarHeight, 32) + 6;
   const bannerHeight = isWide
     ? Math.round(Math.min(height * 0.58, 480))
     : Math.round(width * (9 / 16));
 
-  const imageTop = navbarHeight;
-  const headerTotalHeight = bannerHeight + navbarHeight;
-  const fadeHeight = Math.round(bannerHeight * 0.72);
+  const imageTop = effectiveTopInset;
+  const headerTotalHeight = bannerHeight + imageTop;
+  const fadeHeight = Math.round(bannerHeight * 0.75);
 
   // Handle Android Hardware Back Button
   useEffect(() => {
@@ -131,6 +138,9 @@ export function MediaDetailModal({
       setTitleLogo(null);
       setFailedLogo(false);
       setShowTrailer(false);
+      setIsBannerInView(true);
+      setShowStickyNav(false);
+      navAnim.setValue(0);
       setNetworks([]);
       setCast([]);
       setDirectors([]);
@@ -149,6 +159,8 @@ export function MediaDetailModal({
     let isMounted = true;
     setShowTrailer(false);
     setFailedLogo(false);
+    setShowStickyNav(false);
+    navAnim.setValue(0);
 
     // 1. Trailer fetch & 2s delay timer
     if (currentMedia.trailerUrl) {
@@ -160,7 +172,7 @@ export function MediaDetailModal({
             setTrailerUrl(tData.url);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     // 2. Logo fetch
@@ -171,7 +183,7 @@ export function MediaDetailModal({
         .then(logo => {
           if (isMounted) setTitleLogo(logo);
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     // 3. Networks fetch
@@ -179,7 +191,7 @@ export function MediaDetailModal({
       .then(res => {
         if (isMounted) setNetworks(res);
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // 4. Credits (Cast & Crew) fetch
     fetchMediaCredits(currentMedia.id, currentMedia.type)
@@ -191,7 +203,7 @@ export function MediaDetailModal({
           setWriters(cData.writers);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // 5. Extended Details (Advisories, Runtime, Release Date, Budget) fetch
     fetchMediaExtendedDetails(currentMedia.id, currentMedia.type)
@@ -200,7 +212,7 @@ export function MediaDetailModal({
           setExtendedDetails(extData);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // 6. Similar / Related Content fetch
     setLoadingSimilar(true);
@@ -286,6 +298,44 @@ export function MediaDetailModal({
     setShowTrailer(false);
   }, []);
 
+  const handleScroll = useCallback(
+    (e: any) => {
+      const scrollY = e.nativeEvent?.contentOffset?.y ?? 0;
+      // Pause video when user scrolls down past 60% of the trailer banner
+      const inView = scrollY < bannerHeight * 0.6;
+      setIsBannerInView(prev => (prev !== inView ? inView : prev));
+
+      // Show sticky navbar with movie name when scrolled down past the banner
+      const shouldShowNav = scrollY > (bannerHeight - 40);
+      setShowStickyNav(prev => {
+        if (prev !== shouldShowNav) {
+          Animated.timing(navAnim, {
+            toValue: shouldShowNav ? 1 : 0,
+            duration: 180,
+            useNativeDriver: true,
+          }).start();
+          return shouldShowNav;
+        }
+        return prev;
+      });
+    },
+    [bannerHeight, navAnim],
+  );
+
+  const handleShare = useCallback(async () => {
+    try {
+      if (!currentMedia) return;
+      const title = currentMedia.title;
+      const year = currentMedia.year ? ` (${currentMedia.year})` : '';
+      await Share.share({
+        title: `${title}${year}`,
+        message: `Watch ${title}${year} on Streamit!\n${currentMedia.overview || ''}`.trim(),
+      });
+    } catch (error) {
+      // Ignore cancellation
+    }
+  }, [currentMedia]);
+
   const handleSelectRelated = useCallback((item: MediaItem) => {
     setCurrentMedia(item);
   }, []);
@@ -314,6 +364,12 @@ export function MediaDetailModal({
   const backdropUri = currentMedia.backdrop || currentMedia.poster || undefined;
   const hasTrailer = Boolean(trailerUrl);
 
+  const stickyNavPaddingTop = isWide
+    ? 8
+    : Platform.OS === 'android'
+      ? (StatusBar.currentHeight || 24) + 4
+      : Math.max(insets.top || 0, 16);
+
   return (
     <Modal
       visible={!!currentMedia}
@@ -322,39 +378,56 @@ export function MediaDetailModal({
       onRequestClose={onClose}>
       <StatusBar barStyle="light-content" />
       <View style={styles.modalRoot}>
-        {/* Dark Top Navbar Bar (Exact same height & space as Home page) */}
+        {/* Top Navbar: Single stationary bar so back arrow never jumps/moves, with background & title fading in smoothly */}
         <View
+          pointerEvents="box-none"
           style={[
-            styles.topNavbar,
+            styles.stickyNavbar,
             {
-              height: navbarHeight,
-              paddingTop: isWide ? 10 : topInset + 6,
+              paddingTop: stickyNavPaddingTop,
             },
           ]}>
+          {/* Animated Background & Bottom Border */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              styles.stickyNavbarBg,
+              { opacity: navAnim },
+            ]}
+          />
+
+          {/* Back Button: Stays in the exact same stationary position at all times */}
           <TVFocusable
             style={styles.roundControlBtn}
             focusedStyle={styles.btnFocused}
             hasTVPreferredFocus={false}
             onPress={onClose}>
-            <BackIcon color="#FFFFFF" size={16} />
+            <BackIcon color="#FFFFFF" size={24} />
           </TVFocusable>
 
-          <View style={styles.topNavbarBrand}>
-            <Image
-              source={require('../../assets/logo.png')}
-              style={styles.brandLogoSmall}
-              resizeMode="contain"
-            />
-          </View>
+          {/* Animated Movie Title: Fades in seamlessly on scroll */}
+          <Animated.View
+            style={[styles.stickyNavbarTitleWrap, { opacity: navAnim }]}
+            pointerEvents={showStickyNav ? 'auto' : 'none'}>
+            <Text style={styles.stickyNavbarTitle} numberOfLines={1}>
+              {currentMedia.title}
+            </Text>
+          </Animated.View>
 
-          <View style={styles.navPlaceholderBtn} />
+          {/* Spacer to keep title centered */}
+          <View style={styles.stickyPlaceholder} />
         </View>
 
         <ScrollView
           ref={scrollRef}
           style={styles.containerScroll}
           contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={32}
+          overScrollMode="never"
+          bounces={false}
+          onScroll={handleScroll}>
           {/* 1. TOP HEADER: 16:9 Backdrop Image + 2s Autoplay Trailer Header Starting Below Navbar */}
           <View style={[styles.headerWrap, { width: '100%', height: headerTotalHeight }]}>
             {/* Backdrop Image (Immediate, starts strictly below top navbar) */}
@@ -388,9 +461,11 @@ export function MediaDetailModal({
                   source={{ uri: trailerUrl }}
                   style={styles.nativeVideo}
                   resizeMode={ResizeMode.COVER}
+                  useTextureView={true}
+                  viewType={ViewType.TEXTURE}
                   muted={isMuted}
                   repeat={true}
-                  paused={!showTrailer}
+                  paused={!showTrailer || !isBannerInView}
                   playInBackground={false}
                   playWhenInactive={false}
                   ignoreSilentSwitch="ignore"
@@ -412,9 +487,9 @@ export function MediaDetailModal({
                   focusedStyle={styles.bannerMuteBtnFocused}
                   onPress={toggleMute}>
                   {isMuted ? (
-                    <VolumeMuteIcon color="#FFFFFF" size={16} />
+                    <VolumeMuteIcon color="#FFFFFF" size={22} />
                   ) : (
-                    <VolumeIcon color="#FFFFFF" size={16} />
+                    <VolumeIcon color="#FFFFFF" size={22} />
                   )}
                 </TVFocusable>
               </View>
@@ -460,18 +535,12 @@ export function MediaDetailModal({
                   </Text>
                 </>
               ) : null}
-              <View style={styles.tagPill}>
-                <Text style={styles.tagPillText}>4K UHD</Text>
-              </View>
-              <View style={styles.tagPill}>
-                <Text style={styles.tagPillText}>DOLBY 5.1</Text>
-              </View>
             </View>
 
-            {/* Action Buttons Row: Play / Watch Now & Watchlist */}
+            {/* Action Buttons Row: Full Width Watch Now / Play */}
             <View style={styles.actionRow}>
               <TVFocusable
-                style={styles.primaryPlayBtn}
+                style={styles.primaryPlayBtnFull}
                 focusedStyle={styles.btnFocused}
                 hasTVPreferredFocus={true}
                 onPress={() => {
@@ -479,104 +548,73 @@ export function MediaDetailModal({
                     onPlay(currentMedia, selectedSeason, 1);
                   }
                 }}>
-                <PlayIcon color="#000000" size={16} />
+                <PlayIcon color="#000000" size={18} />
                 <Text style={styles.primaryPlayText}>
                   {currentMedia.type === 'tv' ? `Play S${selectedSeason} E1` : 'Watch Now'}
                 </Text>
               </TVFocusable>
-
-              <TVFocusable
-                style={[
-                  styles.watchlistBtn,
-                  isInWatchlist && styles.watchlistBtnActive,
-                ]}
-                focusedStyle={styles.btnFocused}
-                onPress={() => onToggleWatchlist(currentMedia)}>
-                {isInWatchlist ? (
-                  <CheckIcon color="#4ADE80" size={15} />
-                ) : (
-                  <PlusIcon color="#FFFFFF" size={15} />
-                )}
-                <Text
-                  style={[
-                    styles.watchlistText,
-                    isInWatchlist && styles.watchlistTextActive,
-                  ]}>
-                  {isInWatchlist ? 'Added' : 'Watchlist'}
-                </Text>
-              </TVFocusable>
             </View>
 
-            {/* Content Advisory Badges */}
-            {extendedDetails?.contentAdvisories && extendedDetails.contentAdvisories.length > 0 && (
-              <View style={styles.advisoryContainer}>
-                <View style={styles.advisoryHeaderRow}>
-                  <Text style={styles.advisoryLabel}>CONTENT ADVISORY</Text>
-                  <Text style={styles.advisoryCert}>{displayCertification}</Text>
-                </View>
-                <View style={styles.advisoryBadgesRow}>
-                  {extendedDetails.contentAdvisories.map(adv => (
-                    <View key={adv} style={styles.advisoryPill}>
-                      <Text style={styles.advisoryPillText}>{adv}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Genre Pills */}
-            {currentMedia.genres.length > 0 && (
-              <View style={styles.genreRow}>
-                {currentMedia.genres.map(g => (
-                  <View key={g} style={styles.genrePill}>
-                    <Text style={styles.genrePillText}>{g}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Storyline / Overview */}
+            {/* Storyline / Overview with Genres as heading separated by pipe */}
             <View style={styles.sectionBlock}>
-              <Text style={styles.sectionHeading}>STORYLINE</Text>
+              {currentMedia.genres.length > 0 && (
+                <Text style={styles.genreHeadingText} numberOfLines={2}>
+                  {currentMedia.genres.join('  |  ')}
+                </Text>
+              )}
               <Text style={styles.overviewText}>
                 {currentMedia.overview || 'No description available for this title.'}
               </Text>
             </View>
 
-            {/* Directors, Creators & Writers Row */}
-            {(directors.length > 0 || creators.length > 0 || writers.length > 0) && (
-              <View style={styles.keyCrewRow}>
-                {directors.length > 0 && (
-                  <View style={styles.crewCol}>
-                    <Text style={styles.crewJobLabel}>DIRECTOR</Text>
-                    <Text style={styles.crewNameText}>
-                      {directors.map(d => d.name).join(', ')}
-                    </Text>
-                  </View>
+            {/* Below Storyline Actions: Watchlist & Share */}
+            <View style={styles.secondaryActionsRow}>
+              <TVFocusable
+                style={[
+                  styles.actionPillBtn,
+                  isInWatchlist && styles.actionPillBtnActive,
+                ]}
+                focusedStyle={styles.btnFocused}
+                onPress={() => onToggleWatchlist(currentMedia)}>
+                {isInWatchlist ? (
+                  <CheckIcon color="#4ADE80" size={18} />
+                ) : (
+                  <PlusIcon color="#FFFFFF" size={18} />
                 )}
-                {creators.length > 0 && (
-                  <View style={styles.crewCol}>
-                    <Text style={styles.crewJobLabel}>CREATOR</Text>
-                    <Text style={styles.crewNameText}>
-                      {creators.map(c => c.name).join(', ')}
-                    </Text>
-                  </View>
-                )}
-                {writers.length > 0 && (
-                  <View style={styles.crewCol}>
-                    <Text style={styles.crewJobLabel}>WRITERS</Text>
-                    <Text style={styles.crewNameText}>
-                      {writers.map(w => w.name).join(', ')}
-                    </Text>
-                  </View>
-                )}
+                <Text
+                  style={[
+                    styles.actionPillText,
+                    isInWatchlist && styles.actionPillTextActive,
+                  ]}>
+                  {isInWatchlist ? 'In Watchlist' : 'Watchlist'}
+                </Text>
+              </TVFocusable>
+
+              <TVFocusable
+                style={styles.actionPillBtn}
+                focusedStyle={styles.btnFocused}
+                onPress={handleShare}>
+                <ShareIcon color="#FFFFFF" size={18} />
+                <Text style={styles.actionPillText}>Share</Text>
+              </TVFocusable>
+            </View>
+
+            {/* Content Advisory: Sleek Modern Inline Bar */}
+            {extendedDetails?.contentAdvisories && extendedDetails.contentAdvisories.length > 0 && (
+              <View style={styles.advisoryRow}>
+                <View style={styles.advisoryBadge}>
+                  <Text style={styles.advisoryBadgeText}>{displayCertification}</Text>
+                </View>
+                <Text style={styles.advisoryText} numberOfLines={2}>
+                  {extendedDetails.contentAdvisories.join('  •  ')}
+                </Text>
               </View>
             )}
 
-            {/* Star Cast Horizontal Rail */}
+            {/* Cast Horizontal Rail */}
             {cast.length > 0 && (
               <View style={styles.sectionBlock}>
-                <Text style={styles.sectionHeading}>TOP CAST</Text>
+                <Text style={styles.sectionHeading}>CAST</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -731,73 +769,7 @@ export function MediaDetailModal({
               </View>
             )}
 
-            {/* 4. EXTENDED INFORMATION GRID */}
-            <View style={styles.sectionBlock}>
-              <Text style={styles.sectionHeading}>DETAILS & INFORMATION</Text>
-              <View style={styles.infoTableGrid}>
-                {extendedDetails?.releaseDateFormatted ? (
-                  <View style={styles.infoCell}>
-                    <Text style={styles.infoCellLabel}>RELEASE DATE</Text>
-                    <Text style={styles.infoCellValue}>{extendedDetails.releaseDateFormatted}</Text>
-                  </View>
-                ) : null}
-
-                {extendedDetails?.status ? (
-                  <View style={styles.infoCell}>
-                    <Text style={styles.infoCellLabel}>STATUS</Text>
-                    <Text style={styles.infoCellValue}>{extendedDetails.status}</Text>
-                  </View>
-                ) : null}
-
-                {extendedDetails?.originalLanguageFormatted ? (
-                  <View style={styles.infoCell}>
-                    <Text style={styles.infoCellLabel}>ORIGINAL AUDIO</Text>
-                    <Text style={styles.infoCellValue}>{extendedDetails.originalLanguageFormatted}</Text>
-                  </View>
-                ) : null}
-
-                {extendedDetails?.spokenLanguages && extendedDetails.spokenLanguages.length > 0 ? (
-                  <View style={styles.infoCell}>
-                    <Text style={styles.infoCellLabel}>AUDIO & SUBTITLES</Text>
-                    <Text style={styles.infoCellValue} numberOfLines={2}>
-                      {extendedDetails.spokenLanguages.slice(0, 4).join(', ')}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {extendedDetails?.budgetFormatted ? (
-                  <View style={styles.infoCell}>
-                    <Text style={styles.infoCellLabel}>BUDGET</Text>
-                    <Text style={styles.infoCellValue}>{extendedDetails.budgetFormatted}</Text>
-                  </View>
-                ) : null}
-
-                {extendedDetails?.revenueFormatted ? (
-                  <View style={styles.infoCell}>
-                    <Text style={styles.infoCellLabel}>BOX OFFICE</Text>
-                    <Text style={styles.infoCellValue}>{extendedDetails.revenueFormatted}</Text>
-                  </View>
-                ) : null}
-
-                {extendedDetails?.productionCountries && extendedDetails.productionCountries.length > 0 ? (
-                  <View style={styles.infoCell}>
-                    <Text style={styles.infoCellLabel}>PRODUCTION</Text>
-                    <Text style={styles.infoCellValue} numberOfLines={1}>
-                      {extendedDetails.productionCountries.join(', ')}
-                    </Text>
-                  </View>
-                ) : null}
-
-                <View style={styles.infoCell}>
-                  <Text style={styles.infoCellLabel}>COMMUNITY RATING</Text>
-                  <Text style={styles.infoCellValue}>
-                    ★ {currentMedia.rating.toFixed(1)} ({currentMedia.voteCount.toLocaleString()} votes)
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* 5. RELATED CONTENT / MORE LIKE THIS RAIL */}
+            {/* 4. RELATED CONTENT / MORE LIKE THIS RAIL */}
             <View style={styles.sectionBlock}>
               <Text style={styles.sectionHeading}>MORE LIKE THIS</Text>
 
@@ -833,14 +805,6 @@ export function MediaDetailModal({
                 <Text style={styles.noSimilarText}>No related titles available.</Text>
               )}
             </View>
-
-            {/* TMDB Meta Footer */}
-            <View style={styles.footerMeta}>
-              <Text style={styles.footerTmdbId}>TMDB ID: {currentMedia.id}</Text>
-              <Text style={styles.footerVotes}>
-                {currentMedia.voteCount.toLocaleString()} community ratings
-              </Text>
-            </View>
           </View>
         </ScrollView>
       </View>
@@ -852,6 +816,46 @@ const styles = StyleSheet.create({
   modalRoot: {
     flex: 1,
     backgroundColor: '#040406',
+  },
+  floatingBackWrap: {
+    position: 'absolute',
+    left: 8,
+    zIndex: 50,
+  },
+  stickyNavbar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: 8,
+    paddingRight: 14,
+    paddingBottom: 6,
+  },
+  stickyNavbarBg: {
+    backgroundColor: 'rgba(4, 4, 6, 0.98)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  stickyNavbarTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  stickyNavbarTitle: {
+    textAlign: 'center',
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  stickyPlaceholder: {
+    width: 36,
+    height: 36,
   },
   topNavbar: {
     position: 'absolute',
@@ -881,14 +885,11 @@ const styles = StyleSheet.create({
     height: 38,
   },
   roundControlBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(10, 12, 18, 0.85)',
+    padding: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'transparent',
+    borderRadius: 6,
   },
   containerScroll: {
     flex: 1,
@@ -917,6 +918,7 @@ const styles = StyleSheet.create({
   nativeVideo: {
     width: '100%',
     height: '100%',
+    transform: [{ scale: 1.34 }],
   },
   webView: {
     width: '100%',
@@ -925,41 +927,38 @@ const styles = StyleSheet.create({
   },
   bottomOverlayWrap: {
     position: 'absolute',
-    bottom: 0,
+    bottom: -4,
     left: 0,
     right: 0,
   },
   bannerMuteWrap: {
     position: 'absolute',
     right: 16,
-    bottom: 14,
-    zIndex: 40,
+    bottom: 38,
+    zIndex: 99,
+    elevation: 10,
   },
   bannerMuteWrapWide: {
     right: 28,
-    bottom: 18,
+    bottom: 48,
   },
   bannerMuteBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
+    padding: 6,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderRadius: 6,
   },
   bannerMuteBtnFocused: {
-    borderColor: '#FFFFFF',
-    borderWidth: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.35)',
-    transform: [{ scale: 1.1 }],
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    transform: [{ scale: 1.15 }],
+    borderRadius: 6,
   },
   titleLogoWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
-    marginTop: 8,
+    marginBottom: 16,
+    marginTop: 0,
     width: '100%',
   },
   titleLogoImg: {
@@ -985,13 +984,17 @@ const styles = StyleSheet.create({
   },
   bodyContent: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 0,
+    marginTop: -20,
+    backgroundColor: '#040406',
   },
   bodyContentWide: {
     maxWidth: 960,
     width: '100%',
     alignSelf: 'center',
     paddingHorizontal: 24,
+    marginTop: -30,
+    backgroundColor: '#040406',
   },
   metaRow: {
     flexDirection: 'row',
@@ -1062,8 +1065,17 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 12,
     marginBottom: 16,
+  },
+  primaryPlayBtnFull: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 13,
+    borderRadius: 8,
+    gap: 8,
   },
   primaryPlayBtn: {
     flex: 1.3,
@@ -1079,6 +1091,37 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 14,
     fontWeight: '900',
+  },
+  secondaryActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
+  },
+  actionPillBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0D0F16',
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#191D2A',
+  },
+  actionPillBtnActive: {
+    borderColor: '#4ADE80',
+    backgroundColor: 'rgba(74, 222, 128, 0.08)',
+  },
+  actionPillText: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  actionPillTextActive: {
+    color: '#4ADE80',
   },
   watchlistBtn: {
     flex: 1,
@@ -1103,48 +1146,36 @@ const styles = StyleSheet.create({
   watchlistTextActive: {
     color: '#4ADE80',
   },
-  advisoryContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#12151E',
-    padding: 10,
-    marginBottom: 16,
-  },
-  advisoryHeaderRow: {
+  advisoryRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
-  },
-  advisoryLabel: {
-    color: '#6B7280',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  advisoryCert: {
-    color: '#E2E8F0',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  advisoryBadgesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  advisoryPill: {
-    backgroundColor: '#0D0F16',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    gap: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
     borderWidth: 1,
-    borderColor: '#171B26',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    marginBottom: 20,
   },
-  advisoryPillText: {
+  advisoryBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  advisoryBadgeText: {
     color: '#CBD5E1',
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  advisoryText: {
+    flex: 1,
+    color: '#8A94A6',
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 15,
   },
   genreRow: {
     flexDirection: 'row',
@@ -1164,6 +1195,14 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontSize: 11,
     fontWeight: '600',
+  },
+  genreHeadingText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
   sectionBlock: {
     marginBottom: 20,

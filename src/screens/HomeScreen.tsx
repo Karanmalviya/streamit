@@ -109,6 +109,21 @@ export const HomeScreen = memo(function HomeScreen({
     });
   }, [homeData]);
 
+  const [isBannerInView, setIsBannerInView] = useState(true);
+
+  const handleScroll = useCallback(
+    (e: any) => {
+      const scrollY = e.nativeEvent?.contentOffset?.y ?? 0;
+      // Pause billboard trailer when scrolled down past 200px
+      const inView = scrollY < 220;
+      setIsBannerInView(prev => (prev !== inView ? inView : prev));
+      if (onScroll) {
+        onScroll(e);
+      }
+    },
+    [onScroll],
+  );
+
   if ((loading || !homeData) && !refreshing) {
     return <HomeSkeleton topInset={topInset} />;
   }
@@ -119,7 +134,7 @@ export const HomeScreen = memo(function HomeScreen({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         scrollEventThrottle={16}
-        onScroll={onScroll}
+        onScroll={handleScroll}
         removeClippedSubviews={false}
         overScrollMode="never"
         refreshControl={
@@ -129,6 +144,7 @@ export const HomeScreen = memo(function HomeScreen({
         <HomeBillboard
           heroes={homeData?.heroBillboard || []}
           topInset={topInset}
+          isBannerInView={isBannerInView}
           onSelectMedia={onSelectMedia}
           onToggleWatchlist={onToggleWatchlist}
           isInWatchlist={isInWatchlist}

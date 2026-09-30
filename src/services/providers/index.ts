@@ -62,16 +62,17 @@ class ProviderManager {
     }
 
     // Sort streams:
-    // 1. HDHub Direct CDN links (4K, 1080p PixelDrain/HubCloud high speed)
-    // 2. Embed links (VidLink, AutoEmbed, 2Embed, etc.)
+    // 1. Native Direct Streams (HDHub Direct CDN, PixelDrain/HubCloud MP4/HLS) - highest priority
+    // 2. Direct format streams (format !== 'embed')
+    // 3. Embed fallback links (VidLink, AutoEmbed, etc.)
     return allSources.sort((a, b) => {
-      const isHDHubA = a.id.startsWith('hdhub_') ? 30 : 0;
-      const isHDHubB = b.id.startsWith('hdhub_') ? 30 : 0;
-      const isEmbedA = a.format === 'embed' ? 20 : 0;
-      const isEmbedB = b.format === 'embed' ? 20 : 0;
+      const isNativeA = a.format !== 'embed' ? 40 : 0;
+      const isNativeB = b.format !== 'embed' ? 40 : 0;
+      const isHDHubA = a.id.startsWith('hdhub_') ? 20 : 0;
+      const isHDHubB = b.id.startsWith('hdhub_') ? 20 : 0;
 
-      const weightA = (qualityWeight[a.quality] || 0) + isEmbedA + isHDHubA;
-      const weightB = (qualityWeight[b.quality] || 0) + isEmbedB + isHDHubB;
+      const weightA = (qualityWeight[a.quality] || 0) + isNativeA + isHDHubA;
+      const weightB = (qualityWeight[b.quality] || 0) + isNativeB + isHDHubB;
       return weightB - weightA;
     });
   }

@@ -33,6 +33,8 @@ import { providerManager, StreamSource } from './src/services/providers';
 // Modals
 import { WatchlistModal } from './src/components/modals/WatchlistModal';
 import { StudioContentModal } from './src/components/modals/StudioContentModal';
+import { UpdateModal } from './src/components/modals/UpdateModal';
+import { checkForAppUpdate, UpdateInfo } from './src/services/updater';
 
 // Subcategories Configuration
 import { SubCategory } from './src/components/catalog/CategoryPills';
@@ -103,6 +105,9 @@ function MainAppContent(): React.JSX.Element {
   const [watchlist, setWatchlist] = useState<MediaItem[]>([]);
   const [watchlistModalVisible, setWatchlistModalVisible] = useState(false);
 
+  // App Update State
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+
   // Scroll Navbar Visibility State
   const [navbarVisible, setNavbarVisible] = useState(true);
   const lastScrollY = useRef(0);
@@ -146,9 +151,9 @@ function MainAppContent(): React.JSX.Element {
     setDetailMedia(null);
   }, []);
 
-  // Direct Play (Starts playing Server 1 VidLink embed immediately)
+  // Direct Play (Starts playing Native player by default if found, else Embed)
   const handleDirectPlayMedia = useCallback(async (item: MediaItem, startSeason = 1, startEpisode = 1) => {
-    // 1. Immediately create default embed source so player starts without waiting!
+    // 1. Create default embed source as instant placeholder while resolving
     const defaultEmbedSource: StreamSource = {
       id: 'embed_vidlink_' + item.id + (item.type === 'tv' ? `_s${startSeason}_e${startEpisode}` : ''),
       name: 'Server 1: VidLink HD',
@@ -170,7 +175,7 @@ function MainAppContent(): React.JSX.Element {
       episode: startEpisode,
     });
 
-    // 2. In background, resolve all available servers
+    // 2. Resolve all available servers (prioritizing Native MP4/HLS streams)
     try {
       const sources = await providerManager.getStreams({
         title: item.title,
@@ -180,11 +185,17 @@ function MainAppContent(): React.JSX.Element {
         season: item.type === 'tv' ? startSeason : undefined,
         episode: item.type === 'tv' ? startEpisode : undefined,
       });
+
       if (sources && sources.length > 0) {
+        // Pick native direct stream if available, otherwise fallback to top embed
+        const nativeSource = sources.find(s => s.format !== 'embed');
+        const chosenSource = nativeSource || sources[0];
+
         setActivePlayback(prev => {
           if (!prev || prev.media.id !== item.id) return prev;
           return {
             ...prev,
+            source: chosenSource,
             allSources: sources,
           };
         });
@@ -231,11 +242,16 @@ function MainAppContent(): React.JSX.Element {
           season,
           episode,
         });
+
         if (sources && sources.length > 0) {
+          const nativeSource = sources.find(s => s.format !== 'embed');
+          const chosenSource = nativeSource || sources[0];
+
           setActivePlayback(prev => {
             if (!prev || prev.media.id !== item.id) return prev;
             return {
               ...prev,
+              source: chosenSource,
               allSources: sources,
             };
           });
@@ -305,9 +321,21 @@ function MainAppContent(): React.JSX.Element {
     []
   );
 
-  // Initial home feed fetch
+  // Initial home feed fetch & Background Update Check
   useEffect(() => {
     loadHomeFeed();
+
+    // Check for updates in the background after app load
+    const timer = setTimeout(async () => {
+      try {
+        const update = await checkForAppUpdate();
+        if (update) {
+          setUpdateInfo(update);
+        }
+      } catch (_) {}
+    }, 3000);
+
+    return () => clearTimeout(timer);
   }, [loadHomeFeed]);
 
   // Catalog tab / subcategory changes
@@ -527,6 +555,13 @@ function MainAppContent(): React.JSX.Element {
         studio={selectedStudio}
         onClose={handleCloseStudioModal}
         onSelectMedia={handleOpenDetailMedia}
+      />
+
+      {/* 6. App Update Notification Modal */}
+      <UpdateModal
+        visible={!!updateInfo}
+        updateInfo={updateInfo}
+        onDismiss={() => setUpdateInfo(null)}
       />
 
       {/* 8. Animated In-App Splash Screen */}

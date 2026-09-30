@@ -305,10 +305,72 @@ export function PlayerScreen({
 
   const { width: screenWidth, isLandscape, isTV } = useDeviceMode();
 
-  // Fullscreen state: Landscape & TV are automatically fullscreen
+  // Fullscreen state: TV is always fullscreen; Mobile is controlled by isFullscreen
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const effectiveFullscreen = isFullscreen || isLandscape || isTV;
+  const effectiveFullscreen = isTV || isFullscreen;
   const [serverDropdownOpen, setServerDropdownOpen] = useState(false);
+
+  // Safe SystemBar helpers that prevent crashes when methods aren't available on bridge
+  const safeLockLandscape = useCallback(() => {
+    try {
+      if (typeof NativeModules.SystemBarModule?.lockLandscape === 'function') {
+        NativeModules.SystemBarModule.lockLandscape();
+      }
+    } catch (_) {}
+  }, []);
+
+  const safeLockPortrait = useCallback(() => {
+    try {
+      if (typeof NativeModules.SystemBarModule?.lockPortrait === 'function') {
+        NativeModules.SystemBarModule.lockPortrait();
+      } else if (typeof NativeModules.SystemBarModule?.unlockOrientation === 'function') {
+        NativeModules.SystemBarModule.unlockOrientation();
+      }
+    } catch (_) {}
+  }, []);
+
+  const safeUnlockOrientation = useCallback(() => {
+    try {
+      if (typeof NativeModules.SystemBarModule?.unlockOrientation === 'function') {
+        NativeModules.SystemBarModule.unlockOrientation();
+      }
+    } catch (_) {}
+  }, []);
+
+  const safeHideSystemBars = useCallback(() => {
+    try {
+      if (typeof NativeModules.SystemBarModule?.hideSystemBars === 'function') {
+        NativeModules.SystemBarModule.hideSystemBars();
+      }
+    } catch (_) {}
+  }, []);
+
+  const safeShowSystemBars = useCallback(() => {
+    try {
+      if (typeof NativeModules.SystemBarModule?.showSystemBars === 'function') {
+        NativeModules.SystemBarModule.showSystemBars();
+      }
+    } catch (_) {}
+  }, []);
+
+  // Toggle Fullscreen with proper Landscape/Portrait rotation
+  const toggleFullscreen = useCallback(() => {
+    if (isTV) return;
+    setIsFullscreen(prev => {
+      const next = !prev;
+      if (next) {
+        safeLockLandscape();
+        safeHideSystemBars();
+      } else {
+        safeLockPortrait();
+        safeShowSystemBars();
+        setTimeout(() => {
+          safeUnlockOrientation();
+        }, 800);
+      }
+      return next;
+    });
+  }, [isTV, safeLockLandscape, safeLockPortrait, safeUnlockOrientation, safeHideSystemBars, safeShowSystemBars]);
 
   // Related content
   const [relatedItems, setRelatedItems] = useState<MediaItem[]>([]);
@@ -328,7 +390,18 @@ export function PlayerScreen({
     };
   }, [effectiveFullscreen]);
 
-  // Playback state
+  // Ensure orientation & system bars are restored when Player unmounts
+  useEffect(() => {
+    return () => {
+      if (!isTV) {
+        safeLockPortrait();
+        safeShowSystemBars();
+        setTimeout(() => {
+          safeUnlockOrientation();
+        }, 600);
+      }
+    };
+  }, [isTV, safeLockPortrait, safeShowSystemBars, safeUnlockOrientation]);
   const [paused, setPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -377,22 +450,6 @@ export function PlayerScreen({
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, [resetControlsTimer]);
-
-  // Hide / show system navigation bar, status bars, and lock orientation in fullscreen mode
-  useEffect(() => {
-    if (effectiveFullscreen) {
-      NativeModules.SystemBarModule?.lockLandscape();
-      NativeModules.SystemBarModule?.hideSystemBars();
-    } else {
-      NativeModules.SystemBarModule?.unlockOrientation();
-      NativeModules.SystemBarModule?.showSystemBars();
-    }
-
-    return () => {
-      NativeModules.SystemBarModule?.unlockOrientation();
-      NativeModules.SystemBarModule?.showSystemBars();
-    };
-  }, [effectiveFullscreen]);
 
   useEffect(() => {
     let isMounted = true;
@@ -496,13 +553,13 @@ export function PlayerScreen({
       if (showEpisodesModal) { setShowEpisodesModal(false); return true; }
       if (showSettingsModal) { setShowSettingsModal(false); return true; }
       if (showTracksModal) { setShowTracksModal(false); return true; }
-      if (isFullscreen) { setIsFullscreen(false); return true; }
+      if (isFullscreen) { toggleFullscreen(); return true; }
       onClose();
       return true;
     };
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => subscription.remove();
-  }, [serverDropdownOpen, showEpisodesModal, showSettingsModal, showTracksModal, isFullscreen, onClose]);
+  }, [serverDropdownOpen, showEpisodesModal, showSettingsModal, showTracksModal, isFullscreen, toggleFullscreen, onClose]);
 
   // Flash indicator for 10s seek
   const triggerSeekFlash = (dir: 'left' | 'right') => {
@@ -672,11 +729,31 @@ export function PlayerScreen({
     if (isLoading) setIsLoading(false);
   }, [isLoading]);
 
+  // Reset loading and error states when source changes
+  useEffect(() => {
+    setIsLoading(true);
+    setErrorMessage(null);
+  }, [source.id, source.url]);
+
   const handleError = useCallback((err: any) => {
     console.warn('Native Video Error:', err);
     setIsLoading(false);
-    setErrorMessage('Failed to connect to direct stream. Switch to Embed server.');
-  }, []);
+
+    // Auto-fallback: try alternate native stream first, or fallback to embed
+    const otherSources = availableSources.filter(s => s.id !== source.id);
+    const nextNative = otherSources.find(s => s.format !== 'embed');
+    const nextEmbed = otherSources.find(s => s.format === 'embed');
+    const fallback = nextNative || nextEmbed;
+
+    if (fallback && onSelectSource) {
+      console.log('Stream playback failed, auto-falling back to:', fallback.name);
+      onSelectSource(fallback);
+      setErrorMessage(null);
+      setIsLoading(true);
+    } else {
+      setErrorMessage('Failed to connect to stream.');
+    }
+  }, [availableSources, source.id, onSelectSource]);
 
   // UNIFIED PLAYBACK SPEED
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
@@ -990,7 +1067,7 @@ export function PlayerScreen({
                 style={[styles.glassBtn, isTV && styles.glassBtnTV]}
                 focusedStyle={styles.glassBtnFocused}
                 activeOpacity={0.7}
-                onPress={() => { if (isFullscreen) setIsFullscreen(false); else onClose(); }}>
+                onPress={() => { if (isFullscreen) toggleFullscreen(); else onClose(); }}>
                 <BackIcon color="#FFFFFF" size={isTV ? 20 : 16} />
               </TVFocusable>
             </View>
@@ -1080,7 +1157,7 @@ export function PlayerScreen({
                   style={styles.glassBtnSmall}
                   focusedStyle={styles.glassBtnFocused}
                   activeOpacity={0.7}
-                  onPress={() => setIsFullscreen(f => !f)}>
+                  onPress={toggleFullscreen}>
                   {isFullscreen
                     ? <ExitFullscreenIcon color="#FFFFFF" size={15} />
                     : <FullscreenIcon color="#FFFFFF" size={15} />}

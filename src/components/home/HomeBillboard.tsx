@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, memo, useCallback } from 'react';
+import React, { useRef, useState, useEffect, memo, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,14 @@ import {
   Image,
   StyleSheet,
 } from 'react-native';
-import Video, { ResizeMode } from 'react-native-video';
-import { MediaItem } from '../../services/tmdb';
+import Video, { ResizeMode, ViewType } from 'react-native-video';
+import {
+  MediaItem,
+  MediaExtendedDetails,
+  fetchMediaTrailer,
+  fetchMediaLogo,
+  fetchMediaExtendedDetails,
+} from '../../services/tmdb';
 import {
   BillboardFadedOverlay,
   BillboardTopVignette,
@@ -20,6 +26,7 @@ import { useDeviceMode } from '../../hooks/useDeviceMode';
 interface HomeBillboardProps {
   heroes: MediaItem[];
   topInset: number;
+  isBannerInView?: boolean;
   onSelectMedia: (item: MediaItem) => void;
   onToggleWatchlist?: (item: MediaItem) => void;
   isInWatchlist?: (id: number) => boolean;
@@ -28,6 +35,7 @@ interface HomeBillboardProps {
 interface HeroSlideProps {
   hero: MediaItem;
   isActive: boolean;
+  isBannerInView?: boolean;
   isMuted: boolean;
   screenWidth: number;
   billboardTotalHeight: number;
@@ -39,11 +47,13 @@ interface HeroSlideProps {
   onFailedLogo: (id: number) => void;
   onSelect: (item: MediaItem) => void;
   onTrailerEnded: () => void;
+  onToggleMute: () => void;
 }
 
 const HeroSlide = memo(function HeroSlideComponent({
   hero,
   isActive,
+  isBannerInView = true,
   isMuted,
   screenWidth,
   billboardTotalHeight,
@@ -55,9 +65,53 @@ const HeroSlide = memo(function HeroSlideComponent({
   onFailedLogo,
   onSelect,
   onTrailerEnded,
+  onToggleMute,
 }: HeroSlideProps) {
+  const [trailerUrl, setTrailerUrl] = useState<string | null>(hero.trailerUrl || null);
+  const [titleLogo, setTitleLogo] = useState<string | null>(hero.titleLogo || null);
+  const [extendedDetails, setExtendedDetails] = useState<MediaExtendedDetails | null>(null);
   const [showTrailer, setShowTrailer] = useState(false);
-  const hasTrailer = Boolean(hero.trailerUrl);
+
+  // Fetch trailer, logo, and extended details if not pre-populated
+  useEffect(() => {
+    let isMounted = true;
+
+    if (hero.trailerUrl) {
+      setTrailerUrl(hero.trailerUrl);
+    } else {
+      fetchMediaTrailer(hero.id, hero.type)
+        .then(tData => {
+          if (isMounted && tData?.url) {
+            setTrailerUrl(tData.url);
+          }
+        })
+        .catch(() => {});
+    }
+
+    if (hero.titleLogo) {
+      setTitleLogo(hero.titleLogo);
+    } else {
+      fetchMediaLogo(hero.id, hero.type)
+        .then(logo => {
+          if (isMounted && logo) {
+            setTitleLogo(logo);
+          }
+        })
+        .catch(() => {});
+    }
+
+    fetchMediaExtendedDetails(hero.id, hero.type)
+      .then(extData => {
+        if (isMounted && extData) {
+          setExtendedDetails(extData);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [hero]);
 
   // Use backdrop artwork for cinematic billboard presentation (fallback to poster if unavailable)
   const imageUri = hero.backdrop || hero.poster || undefined;
@@ -65,7 +119,7 @@ const HeroSlide = memo(function HeroSlideComponent({
   // Show poster first; after 2 seconds on the active slide, start playing the trailer
   useEffect(() => {
     let delayTimer: any = null;
-    if (isActive && hasTrailer) {
+    if (isActive && trailerUrl && isBannerInView) {
       delayTimer = setTimeout(() => {
         setShowTrailer(true);
       }, 2000);
@@ -76,7 +130,7 @@ const HeroSlide = memo(function HeroSlideComponent({
     return () => {
       if (delayTimer) clearTimeout(delayTimer);
     };
-  }, [isActive, hasTrailer]);
+  }, [isActive, trailerUrl, isBannerInView]);
 
   const handleSelect = useCallback(() => {
     onSelect(hero);
@@ -86,133 +140,155 @@ const HeroSlide = memo(function HeroSlideComponent({
     onFailedLogo(hero.id);
   }, [hero.id, onFailedLogo]);
 
+  // Certification badge matching Details page
+  const displayCertification = useMemo(() => {
+    const raw = extendedDetails?.certification?.trim();
+    if (!raw) return hero.type === 'movie' ? 'U/A 13+' : 'U/A 16+';
+    if (raw === '18+' || raw === 'A' || raw === 'R' || raw === 'TV-MA' || raw === 'NC-17') return 'U/A 18+';
+    if (raw === '16+' || raw === 'TV-14' || raw === '15') return 'U/A 16+';
+    if (raw === '13+' || raw === 'PG-13' || raw === '12') return 'U/A 13+';
+    if (raw === 'U' || raw === 'G' || raw === 'TV-G' || raw === 'TV-Y' || raw === 'PG') return 'U';
+    return raw.startsWith('U/A') ? raw : `U/A ${raw}`;
+  }, [extendedDetails?.certification, hero.type]);
+
+  const displayRuntime = extendedDetails?.runtimeFormatted;
+
+  const displayLanguages = useMemo(() => {
+    if (extendedDetails?.spokenLanguages && extendedDetails.spokenLanguages.length > 0) {
+      return extendedDetails.spokenLanguages.slice(0, 3).join(', ');
+    }
+    return hero.language || 'English';
+  }, [extendedDetails?.spokenLanguages, hero.language]);
+
+  const horizontalPadding = isWide ? 28 : 14;
+  const cardWidth = screenWidth - horizontalPadding * 2;
+
   return (
-    <TVFocusable
-      style={[
-        styles.slide,
-        { width: screenWidth, height: billboardTotalHeight },
-      ]}
-      focusedStyle={styles.slideFocused}
-      hasTVPreferredFocus={true}
-      onPress={handleSelect}>
-      {/* 1. Backdrop / Poster Image (Shown immediately) */}
-      <Image
-        source={{ uri: imageUri }}
+    <View style={[styles.slide, { width: screenWidth, height: billboardTotalHeight }]}>
+      <TVFocusable
         style={[
-          styles.backdropImage,
+          styles.slideCard,
           {
-            top: imageTop,
-            width: screenWidth,
+            width: cardWidth,
             height: billboardHeight,
+            marginTop: imageTop,
           },
         ]}
-        resizeMode="cover"
-      />
+        focusedStyle={styles.slideCardFocused}
+        hasTVPreferredFocus={true}
+        onPress={handleSelect}>
+        {/* 1. Backdrop / Poster Image (Shown immediately) */}
+        <Image
+          source={{ uri: imageUri }}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+        />
 
-      {/* 2. Direct MP4 Trailer Video Stream (via native ExoPlayer) */}
-      {isActive && showTrailer && hero.trailerUrl ? (
-        <View
-          style={[
-            styles.trailerContainer,
-            {
-              top: imageTop,
-              width: screenWidth,
-              height: billboardHeight,
-            },
-          ]}
-          pointerEvents="none">
-          <Video
-            key={`native-video-${hero.id}-${hero.trailerUrl}`}
-            source={{ uri: hero.trailerUrl }}
-            style={styles.nativeVideo}
-            resizeMode={ResizeMode.COVER}
-            muted={isMuted}
-            repeat={false}
-            paused={!isActive || !showTrailer}
-            playInBackground={false}
-            playWhenInactive={false}
-            ignoreSilentSwitch="ignore"
-            onEnd={onTrailerEnded}
-            onError={onTrailerEnded}
-          />
+        {/* 2. Direct MP4 Trailer Video Stream (via native ExoPlayer) */}
+        {isActive && showTrailer && trailerUrl ? (
+          <View style={styles.trailerContainer} pointerEvents="none">
+            <Video
+              key={`native-video-${hero.id}-${trailerUrl}`}
+              source={{ uri: trailerUrl }}
+              style={styles.nativeVideo}
+              resizeMode={ResizeMode.COVER}
+              useTextureView={true}
+              viewType={ViewType.TEXTURE}
+              muted={isMuted}
+              repeat={true}
+              paused={!isActive || !showTrailer || !isBannerInView}
+              playInBackground={false}
+              playWhenInactive={false}
+              ignoreSilentSwitch="ignore"
+              onError={onTrailerEnded}
+            />
+          </View>
+        ) : null}
+
+        {/* 4. Top Vignette */}
+        <BillboardTopVignette height={60} />
+
+        {/* 5. Left-to-right Side Vignette on Wide / TV screens */}
+        {isWide && <BillboardSideOverlay width={Math.min(cardWidth * 0.55, 520)} />}
+
+        {/* 6. Ultra-smooth Bottom Cinematic Faded Gradient (Extended to cover full bottom with zero gap) */}
+        <View style={styles.bottomOverlayWrap} pointerEvents="none">
+          <BillboardFadedOverlay height={fadeHeight + 14} />
         </View>
-      ) : null}
 
-      {/* 4. Top Vignette for Navbar */}
-      <BillboardTopVignette height={imageTop + 80} />
+        {/* 7. Minimalist Content Overlay */}
+        <View style={[styles.content, isWide && styles.contentWide]}>
+          {/* Title Logo Artwork or Bold Typography */}
+          {titleLogo && !failedLogo ? (
+            <Image
+              source={{ uri: titleLogo }}
+              style={[styles.titleLogo, isWide && styles.titleLogoWide]}
+              resizeMode="contain"
+              onError={handleLogoError}
+            />
+          ) : (
+            <Text
+              style={[styles.title, isWide && styles.titleWide]}
+              numberOfLines={2}>
+              {hero.title}
+            </Text>
+          )}
 
-      {/* 5. Left-to-right Side Vignette on Wide / TV screens */}
-      {isWide && <BillboardSideOverlay width={Math.min(screenWidth * 0.55, 520)} />}
+          {/* Metadata Badges Row: Year · U/A Certification · Runtime · Languages · 4K UHD · DOLBY 5.1 */}
+          <View style={styles.metaRow}>
+            {hero.year && hero.year !== 'N/A' && (
+              <Text style={styles.metaYear}>{hero.year}</Text>
+            )}
 
-      {/* 6. Ultra-smooth 24-step Bottom Cinematic Faded Gradient */}
-      <BillboardFadedOverlay height={fadeHeight} />
+            <View style={styles.metaDot} />
 
-      {/* 7. Minimalist Widescreen Content Overlay (Clean & without buttons) */}
-      <View
-        style={[
-          styles.content,
-          isWide && styles.contentWide,
-        ]}>
-        {/* Title Logo Artwork or Bold Typography */}
-        {hero.titleLogo && !failedLogo ? (
-          <Image
-            source={{ uri: hero.titleLogo }}
-            style={[styles.titleLogo, isWide && styles.titleLogoWide]}
-            resizeMode="contain"
-            onError={handleLogoError}
-          />
-        ) : (
-          <Text
-            style={[styles.title, isWide && styles.titleWide]}
-            numberOfLines={2}>
-            {hero.title}
-          </Text>
-        )}
-
-        {/* Prime Video Meta Badges Row */}
-        <View style={styles.metaRow}>
-          {hero.rating > 0 && (
-            <View style={styles.ratingBadge}>
-              <Text style={styles.ratingStar}>★</Text>
-              <Text style={styles.ratingText}>{hero.rating.toFixed(1)}</Text>
+            <View style={styles.tagPill}>
+              <Text style={styles.tagPillText}>{displayCertification}</Text>
             </View>
-          )}
 
-          {hero.year && hero.year !== 'N/A' && (
-            <Text style={styles.metaText}>{hero.year}</Text>
-          )}
+            {displayRuntime ? (
+              <>
+                <View style={styles.metaDot} />
+                <Text style={styles.metaRuntime}>{displayRuntime}</Text>
+              </>
+            ) : null}
 
-          <View style={styles.qualityPill}>
-            <Text style={styles.qualityText}>4K UHD</Text>
+            {displayLanguages ? (
+              <>
+                <View style={styles.metaDot} />
+                <Text style={styles.metaLanguages} numberOfLines={1}>
+                  {displayLanguages}
+                </Text>
+              </>
+            ) : null}
           </View>
-
-          <View style={styles.qualityPill}>
-            <Text style={styles.qualityText}>HDR</Text>
-          </View>
-
-          <View style={styles.agePill}>
-            <Text style={styles.ageText}>16+</Text>
-          </View>
-
-          <Text style={styles.metaText}>Audio • Subs</Text>
         </View>
 
-        {/* Genres Row */}
-        {hero.genres.length > 0 && (
-          <Text
-            style={[styles.genres, isWide && styles.genresWide]}
-            numberOfLines={1}>
-            {hero.genres.join('  •  ')}
-          </Text>
-        )}
-      </View>
-    </TVFocusable>
+        {/* Top Right Corner Mute/Unmute Trailer Button (Only visible when trailer appears/plays) */}
+        {isActive && showTrailer && trailerUrl && isBannerInView ? (
+          <View style={styles.bannerMuteWrap} pointerEvents="box-none">
+            <TVFocusable
+              style={styles.bannerMuteBtn}
+              focusedStyle={styles.bannerMuteBtnFocused}
+              activeOpacity={0.7}
+              onPress={onToggleMute}>
+              {isMuted ? (
+                <VolumeMuteIcon color="#FFFFFF" size={22} />
+              ) : (
+                <VolumeIcon color="#FFFFFF" size={22} />
+              )}
+            </TVFocusable>
+          </View>
+        ) : null}
+      </TVFocusable>
+    </View>
   );
 });
 
 export const HomeBillboard = memo(function HomeBillboardComponent({
   heroes,
   topInset,
+  isBannerInView = true,
   onSelectMedia,
 }: HomeBillboardProps) {
   const [heroIndex, setHeroIndex] = useState(0);
@@ -261,8 +337,6 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
   }, [advanceToNextSlide]);
 
   // Auto-slide timer:
-  // If the active item has NO trailer, auto-advance after 7s.
-  // If it HAS a trailer, it will auto-advance on trailer end, with a 75s fallback safety timer.
   useEffect(() => {
     if (heroes.length <= 1) return;
     const currentHero = heroes[heroIndex];
@@ -279,14 +353,16 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
   if (!heroes || !heroes.length) return null;
 
   const isWide = isTV || isLandscape;
-  const navbarHeight = isWide ? 0 : topInset + 56;
+  const horizontalPadding = isWide ? 28 : 14;
+  const cardWidth = screenWidth - horizontalPadding * 2;
+  const navbarHeight = isWide ? 0 : topInset + 60;
   const billboardHeight = isWide
-    ? Math.round(Math.min(screenHeight * 0.74, 480))
-    : Math.round(screenWidth * (9 / 16));
+    ? Math.round(Math.min(screenHeight * 0.72, 460))
+    : Math.round(cardWidth * (9 / 16));
 
-  const billboardTotalHeight = isWide ? billboardHeight : billboardHeight + navbarHeight;
-  const fadeHeight = Math.round(billboardHeight * (isWide ? 0.74 : 0.82));
-  const imageTop = isWide ? 0 : navbarHeight;
+  const imageTop = isWide ? 14 : navbarHeight + 14;
+  const billboardTotalHeight = billboardHeight + imageTop;
+  const fadeHeight = Math.round(billboardHeight * (isWide ? 0.82 : 0.90));
 
   return (
     <View style={[styles.rootContainer, { width: screenWidth }]}>
@@ -319,6 +395,7 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
               key={`billboard-${hero.id}`}
               hero={hero}
               isActive={heroIndex === index}
+              isBannerInView={isBannerInView}
               isMuted={isMuted}
               screenWidth={screenWidth}
               billboardTotalHeight={billboardTotalHeight}
@@ -330,32 +407,10 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
               onFailedLogo={handleFailedLogo}
               onSelect={onSelectMedia}
               onTrailerEnded={handleTrailerEnded}
+              onToggleMute={handleToggleMute}
             />
           ))}
         </ScrollView>
-
-        {/* Top Right Corner Mute/Unmute Trailer Button (Default Muted) */}
-        <View
-          style={[
-            styles.muteButtonWrap,
-            {
-              top: imageTop + (isWide ? 14 : 8),
-              right: isWide ? 28 : 12,
-            },
-          ]}
-          pointerEvents="box-none">
-          <TVFocusable
-            style={[styles.muteGlassBtn, isTV && styles.muteGlassBtnTV]}
-            focusedStyle={styles.muteGlassBtnFocused}
-            activeOpacity={0.7}
-            onPress={handleToggleMute}>
-            {isMuted ? (
-              <VolumeMuteIcon color="#FFFFFF" size={isTV ? 20 : 16} />
-            ) : (
-              <VolumeIcon color="#4ADE80" size={isTV ? 20 : 16} />
-            )}
-          </TVFocusable>
-        </View>
       </View>
 
       {/* Centralized Slider Dots in Theme Color (Placed below banner) */}
@@ -376,40 +431,47 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
 
 const styles = StyleSheet.create({
   rootContainer: {
-    backgroundColor: '#08090D',
+    backgroundColor: '#040406',
   },
   container: {
     position: 'relative',
-    backgroundColor: '#08090D',
+    backgroundColor: '#040406',
   },
   slide: {
-    position: 'relative',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    backgroundColor: '#040406',
   },
-  slideFocused: {
+  slideCard: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#040406',
+    position: 'relative',
+  },
+  slideCardFocused: {
     borderWidth: 2,
     borderColor: '#FFFFFF',
+    transform: [{ scale: 1.015 }],
   },
-  backdropImage: {
+  bottomOverlayWrap: {
     position: 'absolute',
+    bottom: -8,
     left: 0,
+    right: 0,
   },
   trailerContainer: {
     position: 'absolute',
+    top: 0,
     left: 0,
+    right: 0,
+    bottom: 0,
     overflow: 'hidden',
-    backgroundColor: '#08090D',
+    backgroundColor: '#040406',
   },
   nativeVideo: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#08090D',
-  },
-  webView: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#08090D',
-    opacity: 0.99,
+    transform: [{ scale: 1.34 }],
+    backgroundColor: '#040406',
   },
   content: {
     position: 'absolute',
@@ -417,24 +479,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 16,
-    paddingBottom: 6,
+    paddingBottom: 10,
     justifyContent: 'flex-end',
     pointerEvents: 'none',
   },
   contentWide: {
-    paddingHorizontal: 40,
-    paddingBottom: 14,
+    paddingHorizontal: 36,
+    paddingBottom: 16,
     maxWidth: 640,
   },
   titleLogo: {
-    width: 180,
-    height: 46,
-    marginBottom: 4,
+    width: 170,
+    height: 44,
+    marginBottom: 6,
     alignSelf: 'flex-start',
   },
   titleLogoWide: {
-    width: 340,
-    height: 82,
+    width: 320,
+    height: 78,
     marginBottom: 8,
   },
   title: {
@@ -443,11 +505,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.3,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   titleWide: {
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 32,
+    lineHeight: 38,
     marginBottom: 8,
   },
   metaRow: {
@@ -455,83 +517,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 3,
   },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+  metaYear: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginRight: 2,
+  },
+  metaDot: {
+    width: 3.5,
+    height: 3.5,
+    borderRadius: 2,
+    backgroundColor: '#64748B',
+    marginHorizontal: 1,
+  },
+  tagPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-  },
-  ratingStar: {
-    color: '#F59E0B',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  ratingText: {
-    color: '#F59E0B',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  metaText: {
-    color: '#94A3B8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  qualityPill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 5,
-    paddingVertical: 1.5,
     borderRadius: 3,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
-  qualityText: {
-    color: '#E2E8F0',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  agePill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    paddingHorizontal: 5,
-    paddingVertical: 1.5,
-    borderRadius: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
-  },
-  ageText: {
-    color: '#E2E8F0',
+  tagPillText: {
+    color: '#CBD0DF',
     fontSize: 9,
     fontWeight: '800',
   },
-  genres: {
+  metaRuntime: {
+    color: '#A0AEC0',
     fontSize: 12,
-    color: '#94A3B8',
     fontWeight: '600',
-    marginBottom: 8,
+    marginRight: 2,
   },
-  genresWide: {
-    fontSize: 13,
-    marginBottom: 10,
-  },
-  overview: {
+  metaLanguages: {
     color: '#CBD5E1',
     fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '400',
-    marginBottom: 8,
-  },
-  overviewWide: {
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 10,
-    maxWidth: 520,
+    fontWeight: '600',
   },
   dotsContainer: {
     flexDirection: 'row',
@@ -544,6 +566,7 @@ const styles = StyleSheet.create({
   dotsContainerWide: {
     paddingTop: 14,
     paddingBottom: 6,
+    gap: 7,
   },
   pillDot: {
     height: 3.5,
@@ -557,28 +580,27 @@ const styles = StyleSheet.create({
     width: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.35)',
   },
-  muteButtonWrap: {
+  bannerMuteWrap: {
     position: 'absolute',
-    zIndex: 50,
-  },
-  muteGlassBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
+    top: 16,
+    right: 16,
+    width: 32,
+    height: 32,
+    zIndex: 99,
+    elevation: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  muteGlassBtnTV: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  bannerMuteBtn: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
   },
-  muteGlassBtnFocused: {
-    borderColor: '#FFFFFF',
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
-    transform: [{ scale: 1.1 }],
+  bannerMuteBtnFocused: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderRadius: 6,
+    transform: [{ scale: 1.15 }],
   },
 });

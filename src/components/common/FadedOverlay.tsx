@@ -1,31 +1,29 @@
 import React, { memo } from 'react';
-import { View, Image, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 
 interface FadedOverlayProps {
   height: number;
 }
 
-// Ultra-smooth GPU-interpolated lossless 128-step vertical shadow fade to #08090D (No visible stepping or lines)
-const BOTTOM_FADE_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAACACAYAAADK+QP0AAAA8klEQVR4nG3EO0RFAQAA0Nf/ver1Tx+VUkpKSpKSJEkSSRJJIpFEIhKJSEREIiIiIiIiIhoioiGiIaIhGqIhGqKhnOUudYYTCkeiodDfYv4pNiguKD4oIShRSQoHRZSsFKUqqjSlK0OZylK2cpSrPOWrQIUqUrFKVKoylatClapStWpUqzrVq0GNalKzWtSqNrWrQ53qUrd61Ks+9WtAgxrSsEY0qjGNa0KTmtK0ZjSrOc1rQYta0rJWtKo1rWtDm9rStna0qz3t60CHOtKxTnSqM53rQpe60rVudKs73etBj3rSs170qje960Of+tK3fn4BdnU8rnAnfA0AAAAASUVORK5CYII=';
-
-// Ultra-smooth top vignette shadow
-const TOP_VIGNETTE_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAABACAYAAADbER1AAAAAk0lEQVR4nFXEP4vBAQAA0N903SWDxWSxWCwWi8ViMVgMFoPBYjAY1A0GgzIopQxKV0pJSemSJCLOv4+lt6h7wws+v8LP4F+Pd3fddNWfLjrrpKMO2munrTZa61crLbXQXDNNNdGPxhppqIH66qmrjtpq6VtNNVRXTVVVVFZJRRWUV05ZZZRWSkklFFdMUUUU0oeCF+fkJ4eia067AAAAAElFTkSuQmCC';
-
-// Ultra-smooth horizontal side shadow for TV / widescreen
-const SIDE_SHADOW_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAAABCAYAAAAW0qa2AAABS0lEQVR4nG3Qz2cXABzG8dFhz3u8DyM6RIwRO0RERERkxIiRiMiIRCISSUwkiUliMjMzk0zSTLJJKaWUSj+0fm611Vbb/oR9Dt/DDjs89+f1bgqurLPlNVtas/+N/QsuNrbQ2N/gn+B8Y3PB38FfwdngTPBn8Efwe/Bb8GvwS3A6+Dn4Kfgx+CH4Pvgu+Db4Jvg6+Cr4Mvgi+Dz4LPg0+CT4OPgo+DA4FZwMPgjeD04Ex4P3gneDd4JjwdvBW8HR4EhwODgUHAwOBG8G+4M3gteD14J9wavBK8HLwUvBi8He4IXg+eC54NngmeDp4KlqebK6nahWx6vPserSU02OVosj1eBw8FDZDwa7y3ugrF3l3F/GzjLuK9/esu0p1+7grjLtLM+O4PaybCtHR3BrGdqDbfV/S3Bzfd8U3Fi/W4PW55Zgc/3dUH+bVgE/wVwF2TLm5wAAAABJRU5ErkJggg==';
-
+// Ultra-smooth GPU-interpolated SVG LinearGradient to deep obsidian #040406 (Zero color mismatch line, zero gaps)
 export const BillboardFadedOverlay = memo(function BillboardFadedOverlayComp({ height }: FadedOverlayProps) {
   if (height <= 0) return null;
   return (
     <View style={[styles.container, { height }]} pointerEvents="none">
-      <Image
-        source={{ uri: BOTTOM_FADE_PNG }}
-        style={StyleSheet.absoluteFill}
-        resizeMode="stretch"
-      />
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <LinearGradient id="bottomFadeObsidian" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor="#040406" stopOpacity="0" />
+            <Stop offset="30%" stopColor="#040406" stopOpacity="0.25" />
+            <Stop offset="60%" stopColor="#040406" stopOpacity="0.75" />
+            <Stop offset="80%" stopColor="#040406" stopOpacity="0.97" />
+            <Stop offset="90%" stopColor="#040406" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#040406" stopOpacity="1" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#bottomFadeObsidian)" />
+      </Svg>
     </View>
   );
 });
@@ -34,11 +32,16 @@ export const BillboardTopVignette = memo(function BillboardTopVignetteComp({ hei
   if (height <= 0) return null;
   return (
     <View style={[styles.topContainer, { height }]} pointerEvents="none">
-      <Image
-        source={{ uri: TOP_VIGNETTE_PNG }}
-        style={StyleSheet.absoluteFill}
-        resizeMode="stretch"
-      />
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <LinearGradient id="topVignetteObsidian" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor="#040406" stopOpacity="0.9" />
+            <Stop offset="50%" stopColor="#040406" stopOpacity="0.4" />
+            <Stop offset="100%" stopColor="#040406" stopOpacity="0" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#topVignetteObsidian)" />
+      </Svg>
     </View>
   );
 });
@@ -47,11 +50,16 @@ export const BillboardSideOverlay = memo(function BillboardSideOverlayComp({ wid
   if (width <= 0) return null;
   return (
     <View style={[styles.sideContainer, { width }]} pointerEvents="none">
-      <Image
-        source={{ uri: SIDE_SHADOW_PNG }}
-        style={StyleSheet.absoluteFill}
-        resizeMode="stretch"
-      />
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <LinearGradient id="sideShadowObsidian" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0%" stopColor="#040406" stopOpacity="0.95" />
+            <Stop offset="50%" stopColor="#040406" stopOpacity="0.5" />
+            <Stop offset="100%" stopColor="#040406" stopOpacity="0" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#sideShadowObsidian)" />
+      </Svg>
     </View>
   );
 });

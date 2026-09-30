@@ -224,46 +224,66 @@ export function BackIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
   );
 }
 
-// 10. Volume Icon
-export function VolumeIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+// 10. Volume / Speaker On Icon (Modern Outline with Soundwaves)
+export function VolumeIcon({ color = '#FFFFFF', size = 22 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Polygon
         points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
-        fill={color}
         stroke={color}
-        strokeWidth={1.5}
+        strokeWidth={2}
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
       <Path
-        d="M15.54 8.46C16.48 9.4 17 10.68 17 12C17 13.32 16.48 14.6 15.54 15.54"
+        d="M15.5 8.5C16.5 9.5 17 10.7 17 12C17 13.3 16.5 14.5 15.5 15.5"
         stroke={color}
         strokeWidth={2}
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
       <Path
-        d="M19.07 4.93C20.94 6.8 22 9.33 22 12C22 14.67 20.94 17.2 19.07 19.07"
+        d="M19 5C20.9 6.9 22 9.3 22 12C22 14.7 20.9 17.1 19 19"
         stroke={color}
         strokeWidth={2}
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </Svg>
   );
 }
 
-// 11. Volume Mute Icon
-export function VolumeMuteIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+// 11. Volume Mute / Speaker Off Icon (Modern Outline with X)
+export function VolumeMuteIcon({ color = '#FFFFFF', size = 22 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Polygon
         points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
-        fill={color}
         stroke={color}
-        strokeWidth={1.5}
+        strokeWidth={2}
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <Line x1="22" y1="9" x2="16" y2="15" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
-      <Line x1="16" y1="9" x2="22" y2="15" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+      <Line
+        x1="22"
+        y1="9"
+        x2="16"
+        y2="15"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line
+        x1="16"
+        y1="9"
+        x2="22"
+        y2="15"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </Svg>
   );
 }
@@ -405,6 +425,19 @@ export function PlusIcon({ color = '#FFFFFF', size = 16 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d="M12 5V19M5 12H19" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// 24. Share Icon
+export function ShareIcon({ color = '#FFFFFF', size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="18" cy="5" r="3" stroke={color} strokeWidth={2} />
+      <Circle cx="6" cy="12" r="3" stroke={color} strokeWidth={2} />
+      <Circle cx="18" cy="19" r="3" stroke={color} strokeWidth={2} />
+      <Line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke={color} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   );
 }
