@@ -54,6 +54,7 @@ import {
   fetchTVSeasons,
   fetchTVEpisodes,
 } from '../services/tmdb';
+import { fetchIntroSegments, MediaSegments } from '../services/introdb';
 
 // Injected script for Embed (WebView) that blocks popups, enables audio by default, synchronizes video playback/state, and handles fullscreen changes
 const INJECTED_WEB_SYNC = `
@@ -502,6 +503,84 @@ export function PlayerScreen({
     return () => { isMounted = false; };
   }, [media.id, media.type, selectedSeason]);
 
+  // IntroDB Segments State (Intro, Recap, Outro, Post-Credits)
+  const [segments, setSegments] = useState<MediaSegments | null>(null);
+  const [autoSkipIntro, setAutoSkipIntro] = useState<boolean>(false);
+  const lastAutoSkippedKey = useRef<string | null>(null);
+
+  // Dynamically fetch IntroDB segments for any Movie or TV series episode
+  useEffect(() => {
+    let isMounted = true;
+    setSegments(null);
+    lastAutoSkippedKey.current = null;
+
+    fetchIntroSegments({
+      tmdbId: media.id,
+      type: media.type,
+      season: media.type === 'tv' ? (season || selectedSeason || 1) : undefined,
+      episode: media.type === 'tv' ? (episode || 1) : undefined,
+    })
+      .then(res => {
+        if (isMounted) {
+          setSegments(res);
+        }
+      })
+      .catch(err => {
+        console.warn('[PlayerScreen] IntroDB fetch error:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [media.id, media.type, season, selectedSeason, episode]);
+
+  // Realtime Active Segment Detection
+  const currentSegment = useMemo(() => {
+    if (!segments) return null;
+    const cur = currentTime;
+    if (segments.recap && cur >= segments.recap.start_sec && cur < segments.recap.end_sec) {
+      return { type: 'recap' as const, label: 'Skip Recap', segment: segments.recap };
+    }
+    if (segments.intro && cur >= segments.intro.start_sec && cur < segments.intro.end_sec) {
+      return { type: 'intro' as const, label: 'Skip Intro', segment: segments.intro };
+    }
+    if (segments.outro && cur >= segments.outro.start_sec && cur < segments.outro.end_sec) {
+      const hasNext = media.type === 'tv' && tvEpisodes.some(e => e.episodeNumber === episode + 1);
+      return {
+        type: 'outro' as const,
+        label: hasNext ? 'Next Episode' : 'Skip Outro',
+        segment: segments.outro,
+      };
+    }
+    if (segments.post_credits && cur >= segments.post_credits.start_sec && cur < segments.post_credits.end_sec) {
+      return { type: 'post_credits' as const, label: 'Skip Credits', segment: segments.post_credits };
+    }
+    return null;
+  }, [segments, currentTime, media.type, tvEpisodes, episode]);
+
+  // Visual Timeline Markers on Seekbar
+  const introMarkerStyle = useMemo(() => {
+    if (!duration || !segments?.intro) return null;
+    const left = (segments.intro.start_sec / duration) * 100;
+    const width = ((segments.intro.end_sec - segments.intro.start_sec) / duration) * 100;
+    if (left < 0 || width <= 0 || left > 100) return null;
+    return {
+      left: `${left}%`,
+      width: `${Math.min(100 - left, width)}%`,
+    };
+  }, [duration, segments?.intro]);
+
+  const recapMarkerStyle = useMemo(() => {
+    if (!duration || !segments?.recap) return null;
+    const left = (segments.recap.start_sec / duration) * 100;
+    const width = ((segments.recap.end_sec - segments.recap.start_sec) / duration) * 100;
+    if (left < 0 || width <= 0 || left > 100) return null;
+    return {
+      left: `${left}%`,
+      width: `${Math.min(100 - left, width)}%`,
+    };
+  }, [duration, segments?.recap]);
+
   useEffect(() => {
     setErrorMessage(null);
     setIsLoading(true);
@@ -639,6 +718,31 @@ export function PlayerScreen({
     setCurrentTime(t);
     resetControlsTimer();
   }, [isEmbed, resetControlsTimer]);
+
+  // Skip Current Detected Segment (Intro, Recap, Outro, Credits)
+  const handleSkipCurrentSegment = useCallback(() => {
+    if (!currentSegment) return;
+    if (currentSegment.type === 'outro' && media.type === 'tv') {
+      const nextEp = tvEpisodes.find(e => e.episodeNumber === episode + 1);
+      if (nextEp && onSelectEpisode) {
+        onSelectEpisode(season, nextEp.episodeNumber, nextEp);
+        return;
+      }
+    }
+    handleSeekTo(currentSegment.segment.end_sec + 0.5);
+  }, [currentSegment, media.type, tvEpisodes, episode, season, onSelectEpisode, handleSeekTo]);
+
+  // Auto-skip handler when enabled
+  useEffect(() => {
+    if (!autoSkipIntro || !currentSegment) return;
+    const key = `${currentSegment.type}_${currentSegment.segment.start_sec}`;
+    if (lastAutoSkippedKey.current === key) return;
+
+    if (currentSegment.type === 'intro' || currentSegment.type === 'recap') {
+      lastAutoSkippedKey.current = key;
+      handleSeekTo(currentSegment.segment.end_sec + 0.5);
+    }
+  }, [autoSkipIntro, currentSegment, handleSeekTo]);
 
   // UNIFIED PLAY/PAUSE
   const handleTogglePlay = useCallback(() => {
@@ -1049,6 +1153,32 @@ export function PlayerScreen({
           </View>
         )}
 
+        {/* 4.5. Smart Floating Skip Segment Button (IntroDB) */}
+        {currentSegment && (
+          <View
+            style={[
+              styles.skipButtonContainer,
+              isTV && styles.skipButtonContainerTV,
+              { bottom: isTV ? 88 : (effectiveFullscreen ? 75 : 54) },
+            ]}
+            pointerEvents="box-none">
+            <TVFocusable
+              hasTVPreferredFocus={true}
+              scaleOnFocus
+              style={[styles.skipBtn, isTV && styles.skipBtnTV]}
+              focusedStyle={styles.skipBtnFocused}
+              activeOpacity={0.8}
+              onPress={handleSkipCurrentSegment}>
+              <View style={styles.skipBtnContent}>
+                <Text style={[styles.skipBtnText, isTV && styles.skipBtnTextTV]}>
+                  {currentSegment.label}
+                </Text>
+                <Text style={styles.skipBtnArrow}>›</Text>
+              </View>
+            </TVFocusable>
+          </View>
+        )}
+
         {/* 5. UNIFIED CONTROLS HUD (Rendered for BOTH Embed & Native) */}
         {showControls && (
           <View style={[StyleSheet.absoluteFill, { zIndex: 60 }]} pointerEvents="box-none">
@@ -1126,6 +1256,13 @@ export function PlayerScreen({
                   }
                 }}>
                 <View style={[styles.progressTrack, isTV && styles.progressTrackTV]} pointerEvents="none">
+                  {/* Intro & Recap Highlights on Seekbar */}
+                  {recapMarkerStyle && (
+                    <View style={[styles.recapMarker, recapMarkerStyle]} pointerEvents="none" />
+                  )}
+                  {introMarkerStyle && (
+                    <View style={[styles.introMarker, introMarkerStyle]} pointerEvents="none" />
+                  )}
                   <View style={[styles.progressFill, { width: progressPercent + '%' }]} pointerEvents="none" />
                 </View>
                 <View style={[styles.progressThumb, isTV && styles.progressThumbTV, { left: progressPercent + '%' }]} pointerEvents="none" />
@@ -1374,6 +1511,8 @@ export function PlayerScreen({
         playbackSpeed={playbackSpeed}
         resizeMode={resizeMode}
         isMuted={isMuted}
+        autoSkipIntro={autoSkipIntro}
+        onToggleAutoSkipIntro={() => setAutoSkipIntro(prev => !prev)}
         audioTracks={audioTracks}
         subtitleTracks={subtitleTracks}
         selectedAudioIndex={selectedAudioIndex}
@@ -1667,6 +1806,81 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     top: 4,
     marginLeft: -8,
+  },
+
+  introMarker: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#F59E0B',
+    opacity: 0.8,
+    borderRadius: 2,
+  },
+  recapMarker: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#38BDF8',
+    opacity: 0.8,
+    borderRadius: 2,
+  },
+
+  // Floating Skip Button (IntroDB)
+  skipButtonContainer: {
+    position: 'absolute',
+    right: 18,
+    zIndex: 90,
+    elevation: 9,
+  },
+  skipButtonContainerTV: {
+    right: 32,
+  },
+  skipBtn: {
+    backgroundColor: 'rgba(12, 14, 20, 0.9)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  skipBtnTV: {
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+    borderRadius: 10,
+    borderColor: 'rgba(255, 255, 255, 0.75)',
+  },
+  skipBtnFocused: {
+    backgroundColor: '#E50914',
+    borderColor: '#FFFFFF',
+    transform: [{ scale: 1.06 }],
+  },
+  skipBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  skipBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  skipBtnTextTV: {
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  skipBtnArrow: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    lineHeight: 16,
   },
 
   // Bottom panel

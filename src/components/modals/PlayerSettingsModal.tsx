@@ -25,6 +25,7 @@ export interface PlayerSettingsModalProps {
   playbackSpeed: number;
   resizeMode: ResizeMode;
   isMuted: boolean;
+  autoSkipIntro?: boolean;
   audioTracks: AudioTrackOption[];
   subtitleTracks: SubtitleTrackOption[];
   selectedAudioIndex: number;
@@ -35,6 +36,7 @@ export interface PlayerSettingsModalProps {
   onSelectSpeed: (speed: number) => void;
   onSelectResizeMode: (mode: ResizeMode) => void;
   onToggleMute: () => void;
+  onToggleAutoSkipIntro?: () => void;
   onSelectAudio: (index: number) => void;
   onSelectSubtitle: (index: number) => void;
   onSelectSubtitleSize: (size: number) => void;
@@ -49,6 +51,7 @@ export function PlayerSettingsModal({
   playbackSpeed,
   resizeMode,
   isMuted,
+  autoSkipIntro = false,
   audioTracks,
   subtitleTracks,
   selectedAudioIndex,
@@ -59,6 +62,7 @@ export function PlayerSettingsModal({
   onSelectSpeed,
   onSelectResizeMode,
   onToggleMute,
+  onToggleAutoSkipIntro,
   onSelectAudio,
   onSelectSubtitle,
   onSelectSubtitleSize,
@@ -126,7 +130,7 @@ export function PlayerSettingsModal({
               focusedStyle={styles.tabBtnFocused}
               onPress={() => setActiveTab('playback')}>
               <Text style={[styles.tabBtnText, activeTab === 'playback' && styles.tabBtnTextActive]}>
-                Speed ({playbackSpeed}x)
+                Playback
               </Text>
             </TVFocusable>
 
@@ -244,10 +248,30 @@ export function PlayerSettingsModal({
               </View>
             )}
 
-            {/* TAB: PLAYBACK SPEED */}
+            {/* TAB: PLAYBACK SPEED & INTRO AUTO-SKIP */}
             {activeTab === 'playback' && (
               <View style={styles.sectionWrap}>
-                <Text style={styles.sectionHeader}>PLAYBACK RATE</Text>
+                {onToggleAutoSkipIntro && (
+                  <>
+                    <Text style={styles.sectionHeader}>SMART SEGMENTS</Text>
+                    <TVFocusable
+                      style={[styles.itemRow, autoSkipIntro && styles.itemRowSelected]}
+                      focusedStyle={styles.itemRowFocused}
+                      onPress={onToggleAutoSkipIntro}>
+                      <View style={styles.itemInfo}>
+                        <Text style={styles.itemTitle}>Auto-Skip Intro & Recap</Text>
+                        <Text style={styles.itemSub}>
+                          {autoSkipIntro ? 'Enabled: Automatically skips intro & recap segments' : 'Disabled: Displays Skip button when intro is detected'}
+                        </Text>
+                      </View>
+                      <View style={[styles.checkedCircle, autoSkipIntro && { backgroundColor: '#E50914' }]}>
+                        {autoSkipIntro && <CheckIcon color="#FFFFFF" size={12} />}
+                      </View>
+                    </TVFocusable>
+                  </>
+                )}
+
+                <Text style={[styles.sectionHeader, { marginTop: onToggleAutoSkipIntro ? 16 : 4 }]}>PLAYBACK RATE</Text>
                 {speedList.map(speed => {
                   const isSelected = playbackSpeed === speed;
                   return (
