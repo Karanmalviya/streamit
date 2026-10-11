@@ -1,12 +1,14 @@
 {
-  "versionCode": 3,
-  "versionName": "1.1.1",
-  "apkUrl": "https://github.com/Karanmalviya/streamit/releases/download/v1.1.1/Streamit-v1.1.1.apk",
-  "releaseDate": "Oct 1, 2026",
+  "versionCode": 4,
+  "versionName": "1.1.2",
+  "apkUrl": "https://github.com/Karanmalviya/streamit/releases/download/v1.1.2/Streamit-v1.1.2.apk",
+  "releaseDate": "Oct 12, 2026",
   "isMandatory": false,
   "changelog": [
-    "Refined billboard trailer autoplay with full video cover",
-    "Optimized speaker icon visibility and layout",
-    "Performance improvements and UI polish"
+    "Added on-demand Check for Updates button in Profile screen",
+    "Continue Watching now launches video player directly with saved timestamp",
+    "Full episode and season resumption from watch history",
+    "Enhanced Android TV remote D-Pad navigation across rails and shelves",
+    "General stability improvements and performance optimizations"
   ]
 }
