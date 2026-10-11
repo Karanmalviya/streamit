@@ -546,6 +546,7 @@ function MainAppContent(): React.JSX.Element {
                 topInset={insets.top}
                 onRefresh={loadHomeFeed}
                 onSelectMedia={handleOpenDetailMedia}
+                onPlayMedia={handleDirectPlayMedia}
                 onOpenListing={handleOpenListing}
                 onToggleWatchlist={toggleWatchlist}
                 isInWatchlist={isInWatchlist}
@@ -604,6 +605,7 @@ function MainAppContent(): React.JSX.Element {
                 topInset={insets.top}
                 bottomInset={insets.bottom}
                 onSelectMedia={handleOpenDetailMedia}
+                onPlayMedia={handleDirectPlayMedia}
                 onOpenWatchlistModal={handleOpenWatchlistModal}
                 onOpenHistoryModal={handleOpenHistoryModal}
                 onScroll={handleScroll}
@@ -636,6 +638,7 @@ function MainAppContent(): React.JSX.Element {
         history={watchHistory}
         onClose={handleCloseHistoryModal}
         onSelectMedia={handleOpenDetailMedia}
+        onPlayMedia={handleDirectPlayMedia}
         onClearHistory={handleClearHistory}
       />
 

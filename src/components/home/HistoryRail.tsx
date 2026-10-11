@@ -16,7 +16,8 @@ interface HistoryRailProps {
   title?: string;
   items: WatchHistoryItem[];
   subTitle?: string;
-  onSelectMedia: (item: any) => void; // passed MediaItem for compatibility
+  onSelectMedia?: (item: any) => void; // passed MediaItem for compatibility
+  onPlayMedia?: (item: any, season?: number, episode?: number) => void;
   onViewAll?: () => void;
   onFocus?: () => void;
 }
@@ -64,14 +65,19 @@ const HistoryInner = memo(function HistoryInnerComponent({ item }: HistoryInnerP
 interface HistoryCardProps {
   item: WatchHistoryItem;
   index: number;
-  onSelect: (item: any) => void;
+  onSelect?: (item: any) => void;
+  onPlay?: (item: any, season?: number, episode?: number) => void;
   onCardFocus?: (index: number) => void;
 }
 
-const HistoryCard = memo(function HistoryCardComponent({ item, onSelect }: HistoryCardProps) {
+const HistoryCard = memo(function HistoryCardComponent({ item, onSelect, onPlay }: HistoryCardProps) {
   const handlePress = useCallback(() => {
-    onSelect(item.media);
-  }, [item, onSelect]);
+    if (onPlay) {
+      onPlay(item.media, item.season || 1, item.episode || 1);
+    } else if (onSelect) {
+      onSelect(item.media);
+    }
+  }, [item, onSelect, onPlay]);
 
   return (
     <Pressable onPress={handlePress}>
@@ -85,6 +91,7 @@ export const HistoryRail = memo(function HistoryRailComponent({
   items,
   subTitle,
   onSelectMedia,
+  onPlayMedia,
   onViewAll,
   onFocus,
 }: HistoryRailProps) {
@@ -110,10 +117,11 @@ export const HistoryRail = memo(function HistoryRailComponent({
         item={item}
         index={index}
         onSelect={onSelectMedia}
+        onPlay={onPlayMedia}
         onCardFocus={handleCardFocus}
       />
     ),
-    [onSelectMedia, handleCardFocus]
+    [onSelectMedia, onPlayMedia, handleCardFocus]
   );
 
   const getItemLayout = useCallback(
@@ -160,7 +168,13 @@ export const HistoryRail = memo(function HistoryRailComponent({
           paddingTop={12}
           paddingBottom={16}
           railId="history"
-          onSelect={(item) => onSelectMedia(item.media)}
+          onSelect={(item) => {
+            if (onPlayMedia) {
+              onPlayMedia(item.media, item.season || 1, item.episode || 1);
+            } else if (onSelectMedia) {
+              onSelectMedia(item.media);
+            }
+          }}
           onFocus={onFocus}
           onPressLeftAtStart={() => tvNavigation.focusSidebar('home')}
           renderItem={(item, index) => (

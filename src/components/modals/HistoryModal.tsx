@@ -22,6 +22,7 @@ interface HistoryModalProps {
   history: WatchHistoryItem[];
   onClose: () => void;
   onSelectMedia: (item: MediaItem) => void;
+  onPlayMedia?: (item: MediaItem, season?: number, episode?: number) => void;
   onClearHistory: () => void;
 }
 
@@ -30,6 +31,7 @@ export function HistoryModal({
   history,
   onClose,
   onSelectMedia,
+  onPlayMedia,
   onClearHistory,
 }: HistoryModalProps) {
   const { width: screenWidth, gridColumns } = useDeviceMode();
@@ -115,7 +117,11 @@ export function HistoryModal({
                     focusedStyle={styles.cardFocused}
                     onPress={() => {
                       onClose();
-                      onSelectMedia(item.media);
+                      if (onPlayMedia) {
+                        onPlayMedia(item.media, item.season || 1, item.episode || 1);
+                      } else {
+                        onSelectMedia(item.media);
+                      }
                     }}>
                     <View style={[styles.gridImageWrap, { width: cardWidth, height: cardHeight }]}>
                       {item.media.backdrop || item.media.poster ? (

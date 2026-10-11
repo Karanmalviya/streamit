@@ -33,6 +33,7 @@ interface ProfileScreenProps {
   topInset: number;
   bottomInset: number;
   onSelectMedia: (item: MediaItem) => void;
+  onPlayMedia?: (item: MediaItem, season?: number, episode?: number) => void;
   onOpenWatchlistModal?: () => void;
   onOpenHistoryModal?: () => void;
   onScroll?: (e: any) => void;
@@ -45,6 +46,7 @@ export const ProfileScreen = memo(function ProfileScreenComponent({
   topInset,
   bottomInset,
   onSelectMedia,
+  onPlayMedia,
   onOpenWatchlistModal,
   onOpenHistoryModal,
   onScroll,
@@ -224,6 +226,7 @@ export const ProfileScreen = memo(function ProfileScreenComponent({
               title=""
               items={watchHistory}
               onSelectMedia={onSelectMedia}
+              onPlayMedia={onPlayMedia}
               onViewAll={onOpenHistoryModal}
             />
           ) : (

@@ -21,6 +21,7 @@ interface HomeScreenProps {
   topInset: number;
   onRefresh: () => void;
   onSelectMedia: (item: MediaItem) => void;
+  onPlayMedia?: (item: MediaItem, season?: number, episode?: number) => void;
   onOpenListing: (config: ListingViewConfig) => void;
   onToggleWatchlist: (item: MediaItem) => void;
   isInWatchlist: (id: number) => boolean;
@@ -35,6 +36,7 @@ export const HomeScreen = memo(function HomeScreenComponent({
   topInset,
   onRefresh,
   onSelectMedia,
+  onPlayMedia,
   onOpenListing,
   onToggleWatchlist,
   isInWatchlist,
@@ -195,6 +197,7 @@ export const HomeScreen = memo(function HomeScreenComponent({
               title="Continue Watching"
               items={watchHistory}
               onSelectMedia={onSelectMedia}
+              onPlayMedia={onPlayMedia}
               onFocus={() => handleRailFocus('history')}
             />
           </View>
