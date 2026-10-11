@@ -11,6 +11,8 @@ import {
   ScrollView,
   Image,
   NativeModules,
+  Animated,
+  DeviceEventEmitter,
 } from 'react-native';
 import Video, {
   VideoRef,
@@ -21,6 +23,7 @@ import Video, {
   TextTrackType,
   AudioTrack,
   TextTrack,
+  ViewType,
 } from 'react-native-video';
 import { WebView } from 'react-native-webview';
 
@@ -35,16 +38,17 @@ import {
   FullscreenIcon,
   ExitFullscreenIcon,
   BookmarkIcon,
-  ChevronDownIcon,
   CCIcon,
   SettingsIcon,
+  EpisodesIcon,
 } from '../components/common/Icons';
 import { TVFocusable } from '../components/common/TVFocusable';
 import { TracksModal, AudioTrackOption, SubtitleTrackOption } from '../components/modals/TracksModal';
-import { PlayerSettingsModal } from '../components/modals/PlayerSettingsModal';
+import { PlayerSettingsModal, CleanQualityOption, SettingsTab } from '../components/modals/PlayerSettingsModal';
 import { EpisodesModal } from '../components/modals/EpisodesModal';
 import { parseSubtitles, SubtitleCue } from '../utils/subtitleParser';
-import { StreamSource } from '../services/providers';
+import { StreamSource, getPreferred720pSource } from '../services/providers';
+import { addToWatchHistory, getWatchHistory } from '../services/history';
 import { useDeviceMode } from '../hooks/useDeviceMode';
 import {
   MediaItem,
@@ -271,6 +275,84 @@ const INJECTED_WEB_SYNC = `
   true;
 `;
 
+/**
+ * Filter & curate sources so Native streams only list 480p, 720p, 1080p, and 4K (if available).
+ */
+function getCuratedQualitySources(sources: StreamSource[]): CleanQualityOption[] {
+  const result: CleanQualityOption[] = [];
+  const nativeList = sources.filter(s => s.format !== 'embed');
+  const embedList = sources.filter(s => s.format === 'embed');
+
+  const tiers: Array<{
+    tier: '4K' | '1080p' | '720p' | '480p';
+    match: (q: string, name: string) => boolean;
+    label: string;
+  }> = [
+      {
+        tier: '720p',
+        match: (q, name) => q.includes('720') || name.toLowerCase().includes('720'),
+        label: '720p High Definition (Default)',
+      },
+      {
+        tier: '1080p',
+        match: (q, name) => q.includes('1080') || name.toLowerCase().includes('1080'),
+        label: '1080p Full HD',
+      },
+      {
+        tier: '480p',
+        match: (q, name) =>
+          q.includes('480') ||
+          q.includes('360') ||
+          name.toLowerCase().includes('480') ||
+          name.toLowerCase().includes('360'),
+        label: '480p Standard Definition',
+      },
+      {
+        tier: '4K',
+        match: (q, name) =>
+          q.includes('4k') ||
+          q.includes('2160') ||
+          name.toLowerCase().includes('4k') ||
+          name.toLowerCase().includes('2160'),
+        label: '4K Ultra HD',
+      },
+    ];
+
+  for (const t of tiers) {
+    const found = nativeList.find(s => t.match(s.quality.toLowerCase(), s.name));
+    if (found) {
+      result.push({
+        tier: t.tier,
+        label: t.label,
+        source: found,
+        isNative: true,
+      });
+    }
+  }
+
+  // Fallback: If no tiered streams matched but native streams exist, include top native stream
+  if (result.length === 0 && nativeList.length > 0) {
+    result.push({
+      tier: '720p',
+      label: '720p HD Direct',
+      source: nativeList[0],
+      isNative: true,
+    });
+  }
+
+  // Include single clean embed server if available
+  if (embedList.length > 0) {
+    result.push({
+      tier: 'Embed',
+      label: 'Web Player (Embed)',
+      source: embedList[0],
+      isNative: false,
+    });
+  }
+
+  return result;
+}
+
 interface PlayerScreenProps {
   media: MediaItem;
   source: StreamSource;
@@ -284,6 +366,7 @@ interface PlayerScreenProps {
   onSelectEpisode?: (season: number, episode: number, episodeData?: TVEpisode) => void;
   onToggleWatchlist?: (item: MediaItem) => void;
   isInWatchlist?: boolean;
+  initialProgress?: number;
 }
 
 export function PlayerScreen({
@@ -299,17 +382,33 @@ export function PlayerScreen({
   onSelectEpisode,
   onToggleWatchlist,
   isInWatchlist = false,
+  initialProgress = 0,
 }: PlayerScreenProps) {
   const isEmbed = source.format === 'embed';
   const videoRef = useRef<VideoRef>(null);
   const webViewRef = useRef<any>(null);
 
-  const { width: screenWidth, isLandscape, isTV } = useDeviceMode();
+  const { width: screenWidth, isTV } = useDeviceMode();
+
+  // Save history and close
+  const handleClosePlayer = useCallback(async () => {
+    if (currentTimeRef.current > 5) {
+      await addToWatchHistory({
+        media,
+        lastWatchedAt: Date.now(),
+        progress: currentTimeRef.current,
+        duration: durationRef.current,
+        season,
+        episode,
+      });
+    }
+    onClose();
+  }, [media, season, episode, onClose]);
+
 
   // Fullscreen state: TV is always fullscreen; Mobile is controlled by isFullscreen
   const [isFullscreen, setIsFullscreen] = useState(false);
   const effectiveFullscreen = isTV || isFullscreen;
-  const [serverDropdownOpen, setServerDropdownOpen] = useState(false);
 
   // Safe SystemBar helpers that prevent crashes when methods aren't available on bridge
   const safeLockLandscape = useCallback(() => {
@@ -317,7 +416,9 @@ export function PlayerScreen({
       if (typeof NativeModules.SystemBarModule?.lockLandscape === 'function') {
         NativeModules.SystemBarModule.lockLandscape();
       }
-    } catch (_) {}
+    } catch {
+      // ignore
+    }
   }, []);
 
   const safeLockPortrait = useCallback(() => {
@@ -327,7 +428,9 @@ export function PlayerScreen({
       } else if (typeof NativeModules.SystemBarModule?.unlockOrientation === 'function') {
         NativeModules.SystemBarModule.unlockOrientation();
       }
-    } catch (_) {}
+    } catch {
+      // ignore
+    }
   }, []);
 
   const safeUnlockOrientation = useCallback(() => {
@@ -335,7 +438,9 @@ export function PlayerScreen({
       if (typeof NativeModules.SystemBarModule?.unlockOrientation === 'function') {
         NativeModules.SystemBarModule.unlockOrientation();
       }
-    } catch (_) {}
+    } catch {
+      // ignore
+    }
   }, []);
 
   const safeHideSystemBars = useCallback(() => {
@@ -343,7 +448,9 @@ export function PlayerScreen({
       if (typeof NativeModules.SystemBarModule?.hideSystemBars === 'function') {
         NativeModules.SystemBarModule.hideSystemBars();
       }
-    } catch (_) {}
+    } catch {
+      // ignore
+    }
   }, []);
 
   const safeShowSystemBars = useCallback(() => {
@@ -351,7 +458,9 @@ export function PlayerScreen({
       if (typeof NativeModules.SystemBarModule?.showSystemBars === 'function') {
         NativeModules.SystemBarModule.showSystemBars();
       }
-    } catch (_) {}
+    } catch {
+      // ignore
+    }
   }, []);
 
   // Toggle Fullscreen with proper Landscape/Portrait rotation
@@ -413,19 +522,38 @@ export function PlayerScreen({
   // High precision time & duration refs
   const currentTimeRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
+  const seekLockUntilRef = useRef<number>(0);
+  const isScrubbingRef = useRef<boolean>(false);
+  const [scrubbingTime, setScrubbingTime] = useState<number | null>(null);
+  const trackRef = useRef<any>(null);
+  const trackWidthRef = useRef<number>(0);
+  const trackLeftRef = useRef<number>(0);
+  const playPauseRef = useRef<any>(null);
+  const scrubberFocusRef = useRef<any>(null);
+  const [isScrubberFocused, setIsScrubberFocused] = useState(false);
+  const isScrubberFocusedRef = useRef(false);
+
+  // D-pad continuous hold-to-scrub refs
+  const lastDpadTimeRef = useRef<number>(0);
+  const lastDpadDirRef = useRef<'left' | 'right' | null>(null);
+  const holdStartTimeRef = useRef<number>(0);
+  const releaseDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrubPositionRef = useRef<number>(0);
 
   // Double-tap & single-tap gesture handling
   const lastTapTimeRef = useRef<number>(0);
   const [seekFlash, setSeekFlash] = useState<'left' | 'right' | null>(null);
   const seekFlashTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // HUD Controls visibility
+  // HUD Controls visibility & idle auto-hide animation
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controlsOpacity = useRef(new Animated.Value(1)).current;
 
   // Audio & Subtitles
   const [showTracksModal, setShowTracksModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('quality');
   const [audioTracks, setAudioTracks] = useState<AudioTrackOption[]>([]);
   const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrackOption[]>([]);
   const [selectedAudioIndex, setSelectedAudioIndex] = useState<number>(0);
@@ -434,29 +562,104 @@ export function PlayerScreen({
   const [subtitleOffset, setSubtitleOffset] = useState<number>(0);
   const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
 
-  // Group sources by type
-  const nativeSources = availableSources.filter(s => s.format !== 'embed');
-  const embedSources = availableSources.filter(s => s.format === 'embed');
+  // Curated clean quality options (480p, 720p, 1080p, 4K)
+  const curatedQualities = useMemo(
+    () => getCuratedQualitySources(availableSources),
+    [availableSources]
+  );
 
-  // Reset auto-hide timer for controls
-  const resetControlsTimer = useCallback(() => {
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    setShowControls(true);
-    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 4000);
-  }, []);
-
+  // Auto-switch to preferred 720p stream if currently playing embed placeholder or 4K
   useEffect(() => {
-    resetControlsTimer();
+    if (availableSources && availableSources.length > 0 && onSelectSource) {
+      if (source.format === 'embed' || source.quality === '4K') {
+        const preferred = getPreferred720pSource(availableSources);
+        if (preferred && preferred.id !== source.id && preferred.quality !== '4K') {
+          console.log('[PlayerScreen] Auto-switching to preferred 720p source:', preferred.name);
+          onSelectSource(preferred);
+        }
+      }
+    }
+  }, [availableSources, source, onSelectSource]);
+
+  const targetSeekTimeRef = useRef<number>(initialProgress);
+  
+  // Set initial seek time if it changed
+  useEffect(() => {
+    if (initialProgress > 0) {
+      targetSeekTimeRef.current = initialProgress;
+    }
+  }, [initialProgress, media.id, season, episode]);
+
+  const handleSelectQualitySource = useCallback(
+    (newSource: StreamSource) => {
+      targetSeekTimeRef.current = currentTimeRef.current;
+      if (onSelectSource) {
+        onSelectSource(newSource);
+      }
+    },
+    [onSelectSource]
+  );
+
+  // Hide controls smoothly
+  const hideControls = useCallback(() => {
+    if (isScrubbingRef.current) return;
+    if (showTracksModal || showSettingsModal || showEpisodesModal) return;
+
+    Animated.timing(controlsOpacity, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setShowControls(false);
+        setIsScrubberFocused(false);
+        isScrubberFocusedRef.current = false;
+      }
+    });
+  }, [showTracksModal, showSettingsModal, showEpisodesModal, controlsOpacity]);
+
+  // Reset auto-hide timer for controls (called on user interaction / remote click)
+  const resetControlsTimer = useCallback(() => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+      controlsTimeoutRef.current = null;
+    }
+    setShowControls(true);
+    Animated.timing(controlsOpacity, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+
+    // Auto-hide when idle after 3.5 seconds
+    if (!showTracksModal && !showSettingsModal && !showEpisodesModal && !isScrubbingRef.current) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        hideControls();
+      }, 3500);
+    }
+  }, [showTracksModal, showSettingsModal, showEpisodesModal, controlsOpacity, hideControls]);
+
+  // Restart idle timer when modals close; keep controls visible when modals are open
+  useEffect(() => {
+    if (!showTracksModal && !showSettingsModal && !showEpisodesModal) {
+      resetControlsTimer();
+    } else {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null;
+      }
+    }
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+      if (releaseDebounceTimerRef.current) clearTimeout(releaseDebounceTimerRef.current);
     };
-  }, [resetControlsTimer]);
+  }, [showTracksModal, showSettingsModal, showEpisodesModal, resetControlsTimer]);
 
   useEffect(() => {
     let isMounted = true;
     fetchSimilarMedia(media.id, media.type)
       .then(items => { if (isMounted) setRelatedItems(items); })
-      .catch(() => {});
+      .catch(() => { });
     return () => { isMounted = false; };
   }, [media.id, media.type]);
 
@@ -481,7 +684,7 @@ export function PlayerScreen({
           });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => { isMounted = false; };
   }, [media.id, media.type]);
 
@@ -508,17 +711,19 @@ export function PlayerScreen({
   const [autoSkipIntro, setAutoSkipIntro] = useState<boolean>(false);
   const lastAutoSkippedKey = useRef<string | null>(null);
 
-  // Dynamically fetch IntroDB segments for any Movie or TV series episode
+  // Dynamically fetch IntroDB segments for any Movie or TV/Anime series episode
   useEffect(() => {
     let isMounted = true;
     setSegments(null);
     lastAutoSkippedKey.current = null;
 
+    const isEpisodic = media.type === 'tv' || media.type === 'anime';
+
     fetchIntroSegments({
       tmdbId: media.id,
       type: media.type,
-      season: media.type === 'tv' ? (season || selectedSeason || 1) : undefined,
-      episode: media.type === 'tv' ? (episode || 1) : undefined,
+      season: isEpisodic ? (season || selectedSeason || 1) : undefined,
+      episode: isEpisodic ? (episode || 1) : undefined,
     })
       .then(res => {
         if (isMounted) {
@@ -538,6 +743,8 @@ export function PlayerScreen({
   const currentSegment = useMemo(() => {
     if (!segments) return null;
     const cur = currentTime;
+    const isEpisodic = media.type === 'tv' || media.type === 'anime';
+
     if (segments.recap && cur >= segments.recap.start_sec && cur < segments.recap.end_sec) {
       return { type: 'recap' as const, label: 'Skip Recap', segment: segments.recap };
     }
@@ -545,7 +752,7 @@ export function PlayerScreen({
       return { type: 'intro' as const, label: 'Skip Intro', segment: segments.intro };
     }
     if (segments.outro && cur >= segments.outro.start_sec && cur < segments.outro.end_sec) {
-      const hasNext = media.type === 'tv' && tvEpisodes.some(e => e.episodeNumber === episode + 1);
+      const hasNext = isEpisodic && tvEpisodes.some(e => e.episodeNumber === episode + 1);
       return {
         type: 'outro' as const,
         label: hasNext ? 'Next Episode' : 'Skip Outro',
@@ -628,17 +835,20 @@ export function PlayerScreen({
 
   useEffect(() => {
     const onBackPress = () => {
-      if (serverDropdownOpen) { setServerDropdownOpen(false); return true; }
       if (showEpisodesModal) { setShowEpisodesModal(false); return true; }
       if (showSettingsModal) { setShowSettingsModal(false); return true; }
       if (showTracksModal) { setShowTracksModal(false); return true; }
+      if (showControls) {
+        hideControls();
+        return true;
+      }
       if (isFullscreen) { toggleFullscreen(); return true; }
-      onClose();
+      handleClosePlayer();
       return true;
     };
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => subscription.remove();
-  }, [serverDropdownOpen, showEpisodesModal, showSettingsModal, showTracksModal, isFullscreen, toggleFullscreen, onClose]);
+  }, [showEpisodesModal, showSettingsModal, showTracksModal, showControls, isFullscreen, toggleFullscreen, handleClosePlayer, hideControls]);
 
   // Flash indicator for 10s seek
   const triggerSeekFlash = (dir: 'left' | 'right') => {
@@ -649,75 +859,205 @@ export function PlayerScreen({
 
   // UNIFIED SEEK FUNCTION (Works for both Native & Embed)
   const handleSeek = useCallback((seconds: number) => {
-    const cur = currentTimeRef.current;
-    const dur = durationRef.current;
+    const cur = currentTimeRef.current || currentTime;
+    const dur = durationRef.current || duration;
     let target = cur + seconds;
     if (target < 0) target = 0;
     if (dur > 0 && target > dur) target = dur;
 
+    // Lock incoming onProgress updates for 1s so ExoPlayer has time to buffer & seek smoothly
+    seekLockUntilRef.current = Date.now() + 1000;
+    currentTimeRef.current = target;
+    setCurrentTime(target);
+
     if (isEmbed) {
       const js = `
         (function() {
           try {
             var v = document.querySelector('video');
-            if (!v) {
-              var frames = document.querySelectorAll('iframe');
-              for (var i = 0; i < frames.length; i++) {
-                try {
-                  var fv = frames[i].contentWindow.document.querySelector('video');
-                  if (fv) { v = fv; break; }
-                } catch(e) {}
-              }
-            }
             if (v) { v.currentTime = ${target}; }
+            var frames = document.querySelectorAll('iframe');
+            for (var i = 0; i < frames.length; i++) {
+              try {
+                frames[i].contentWindow.postMessage({ type: 'SEEK', time: ${target} }, '*');
+                var fv = frames[i].contentWindow.document.querySelector('video');
+                if (fv) { fv.currentTime = ${target}; }
+              } catch(e) {}
+            }
           } catch(e) {}
         })();
         true;
       `;
       webViewRef.current?.injectJavaScript(js);
     } else {
+      console.log('[PlayerScreen] Executing Native Video seek:', target, 'seconds');
       videoRef.current?.seek(target);
     }
 
-    currentTimeRef.current = target;
-    setCurrentTime(target);
     resetControlsTimer();
-  }, [isEmbed, resetControlsTimer]);
+  }, [isEmbed, currentTime, duration, resetControlsTimer]);
 
   // UNIFIED ABSOLUTE SEEK (From progress scrubber)
   const handleSeekTo = useCallback((targetTime: number) => {
-    const dur = durationRef.current;
+    const dur = durationRef.current || duration;
     let t = Math.max(0, targetTime);
     if (dur > 0 && t > dur) t = dur;
+
+    // Lock incoming onProgress updates for 1s
+    seekLockUntilRef.current = Date.now() + 1000;
+    currentTimeRef.current = t;
+    setCurrentTime(t);
 
     if (isEmbed) {
       const js = `
         (function() {
           try {
             var v = document.querySelector('video');
-            if (!v) {
-              var frames = document.querySelectorAll('iframe');
-              for (var i = 0; i < frames.length; i++) {
-                try {
-                  var fv = frames[i].contentWindow.document.querySelector('video');
-                  if (fv) { v = fv; break; }
-                } catch(e) {}
-              }
-            }
             if (v) { v.currentTime = ${t}; }
+            var frames = document.querySelectorAll('iframe');
+            for (var i = 0; i < frames.length; i++) {
+              try {
+                frames[i].contentWindow.postMessage({ type: 'SEEK', time: ${t} }, '*');
+                var fv = frames[i].contentWindow.document.querySelector('video');
+                if (fv) { fv.currentTime = ${t}; }
+              } catch(e) {}
+            }
           } catch(e) {}
         })();
         true;
       `;
       webViewRef.current?.injectJavaScript(js);
     } else {
+      console.log('[PlayerScreen] Executing Native Video seekTo:', t, 'seconds');
       videoRef.current?.seek(t);
     }
 
-    currentTimeRef.current = t;
-    setCurrentTime(t);
     resetControlsTimer();
-  }, [isEmbed, resetControlsTimer]);
+  }, [isEmbed, duration, resetControlsTimer]);
+
+  // Touch and Drag position calculation on the scrubber track
+  const calculateScrubberTime = useCallback((evt: any) => {
+    const dur = durationRef.current || duration;
+    const w = trackWidthRef.current || trackWidth || Math.max(100, screenWidth - 100);
+    if (dur <= 0 || w <= 0) return 0;
+    let x = evt.nativeEvent.locationX;
+    if (trackLeftRef.current > 0 && typeof evt.nativeEvent.pageX === 'number') {
+      x = evt.nativeEvent.pageX - trackLeftRef.current;
+    }
+    const ratio = Math.max(0, Math.min(1, x / w));
+    return ratio * dur;
+  }, [duration, trackWidth, screenWidth]);
+
+  const handleScrubberGrant = useCallback((evt: any) => {
+    isScrubbingRef.current = true;
+    const t = calculateScrubberTime(evt);
+    setScrubbingTime(t);
+    resetControlsTimer();
+  }, [calculateScrubberTime, resetControlsTimer]);
+
+  const handleScrubberMove = useCallback((evt: any) => {
+    const t = calculateScrubberTime(evt);
+    setScrubbingTime(t);
+  }, [calculateScrubberTime]);
+
+  const handleScrubberRelease = useCallback((evt: any) => {
+    isScrubbingRef.current = false;
+    const t = calculateScrubberTime(evt);
+    setScrubbingTime(null);
+    handleSeekTo(t);
+    resetControlsTimer();
+  }, [calculateScrubberTime, handleSeekTo, resetControlsTimer]);
+
+  const handleScrubberTerminate = useCallback(() => {
+    isScrubbingRef.current = false;
+    setScrubbingTime(null);
+    resetControlsTimer();
+  }, [resetControlsTimer]);
+
+  // Commit any in-progress D-pad scrubber hold
+  const commitScrub = useCallback(() => {
+    if (releaseDebounceTimerRef.current) {
+      clearTimeout(releaseDebounceTimerRef.current);
+      releaseDebounceTimerRef.current = null;
+    }
+    if (isScrubbingRef.current) {
+      isScrubbingRef.current = false;
+      const target = scrubPositionRef.current;
+      setScrubbingTime(null);
+      handleSeekTo(target);
+    }
+    lastDpadDirRef.current = null;
+  }, [handleSeekTo]);
+
+  // Handle D-pad Left / Right with click-to-seek and smooth continuous hold-to-scrub
+  const handleScrubberDpad = useCallback(
+    (dir: 'left' | 'right') => {
+      const now = Date.now();
+      const isSameDir = lastDpadDirRef.current === dir;
+      const timeSinceLast = now - lastDpadTimeRef.current;
+      lastDpadTimeRef.current = now;
+      resetControlsTimer();
+
+      const dur = durationRef.current || duration || 7200;
+
+      // Detect hold / rapid repeat from TV remote (interval < 350ms)
+      if (isSameDir && timeSinceLast < 350) {
+        if (!isScrubbingRef.current) {
+          isScrubbingRef.current = true;
+          holdStartTimeRef.current = now - timeSinceLast;
+          scrubPositionRef.current = currentTimeRef.current || currentTime;
+        }
+
+        const holdDuration = now - holdStartTimeRef.current;
+        // Accelerate smoothly as button is held down:
+        // Initial 600ms: ~0.5% of duration per tick (min 10s)
+        // 600ms - 1500ms: ~1.5% of duration per tick (min 25s)
+        // > 1500ms: ~3.5% of duration per tick (min 60s)
+        let step = Math.max(10, dur * 0.005);
+        if (holdDuration > 1500) {
+          step = Math.max(60, dur * 0.035);
+        } else if (holdDuration > 600) {
+          step = Math.max(25, dur * 0.015);
+        }
+
+        let nextTime = scrubPositionRef.current + (dir === 'right' ? step : -step);
+        if (nextTime < 0) nextTime = 0;
+        if (dur > 0 && nextTime > dur) nextTime = dur;
+
+        scrubPositionRef.current = nextTime;
+        setScrubbingTime(nextTime);
+
+        // Schedule commit when user releases the button
+        if (releaseDebounceTimerRef.current) {
+          clearTimeout(releaseDebounceTimerRef.current);
+        }
+        releaseDebounceTimerRef.current = setTimeout(() => {
+          commitScrub();
+          triggerSeekFlash(dir);
+        }, 360);
+      } else {
+        // Single click (or initial press)
+        if (releaseDebounceTimerRef.current) {
+          clearTimeout(releaseDebounceTimerRef.current);
+          releaseDebounceTimerRef.current = null;
+        }
+        lastDpadDirRef.current = dir;
+        holdStartTimeRef.current = now;
+        scrubPositionRef.current = (currentTimeRef.current || currentTime) + (dir === 'right' ? 10 : -10);
+        if (scrubPositionRef.current < 0) scrubPositionRef.current = 0;
+        if (dur > 0 && scrubPositionRef.current > dur) scrubPositionRef.current = dur;
+
+        handleSeek(dir === 'right' ? 10 : -10);
+        triggerSeekFlash(dir);
+
+        // Clear direction if no repeat occurs within 360ms
+        releaseDebounceTimerRef.current = setTimeout(() => {
+          lastDpadDirRef.current = null;
+        }, 360);
+      }
+    },
+    [duration, currentTime, resetControlsTimer, commitScrub, handleSeek]
+  );
 
   // Skip Current Detected Segment (Intro, Recap, Outro, Credits)
   const handleSkipCurrentSegment = useCallback(() => {
@@ -777,9 +1117,9 @@ export function PlayerScreen({
   }, [isEmbed, paused, resetControlsTimer]);
 
   // Screen Tap / Double Tap handler
-  const handleScreenTouch = (evt: any) => {
+  const handleScreenTouch = (evt?: any) => {
     const now = Date.now();
-    const x = evt.nativeEvent.locationX;
+    const x = evt?.nativeEvent?.locationX ?? screenWidth / 2;
     const isDoubleTap = now - lastTapTimeRef.current < 350;
     lastTapTimeRef.current = now;
 
@@ -791,14 +1131,120 @@ export function PlayerScreen({
         handleSeek(10);
         triggerSeekFlash('right');
       }
+      resetControlsTimer();
     } else {
       if (showControls) {
-        setShowControls(false);
+        hideControls();
       } else {
         resetControlsTimer();
       }
     }
   };
+
+  // Listen to Hardware Key Events on Android TV (D-pad & Media keys)
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('onHWKeyEvent', (e: { eventType: string; keyCode?: number }) => {
+      const { eventType, keyCode } = e || {};
+      // Ignore native focus / blur events completely
+      if (!eventType || eventType === 'focus' || eventType === 'blur') {
+        return;
+      }
+
+      console.log('[PlayerHWKey]', eventType, keyCode, 'showControls:', showControls, 'isScrubber:', isScrubberFocusedRef.current);
+
+      if (showTracksModal || showSettingsModal || showEpisodesModal) return;
+
+      if (eventType === 'playPause' || keyCode === 85 || keyCode === 126 || keyCode === 127) {
+        handleTogglePlay();
+        resetControlsTimer();
+        return;
+      }
+      if (eventType === 'fastForward') {
+        handleSeek(10);
+        triggerSeekFlash('right');
+        resetControlsTimer();
+        return;
+      }
+      if (eventType === 'rewind') {
+        handleSeek(-10);
+        triggerSeekFlash('left');
+        resetControlsTimer();
+        return;
+      }
+
+      const isDirectionalOrSelect = ['up', 'down', 'left', 'right', 'select', 'center'].includes(eventType);
+      if (!isDirectionalOrSelect) {
+        return;
+      }
+
+      if (!showControls) {
+        if (eventType === 'select' || eventType === 'center') {
+          handleTogglePlay();
+        } else if (eventType === 'left') {
+          handleSeek(-10);
+          triggerSeekFlash('left');
+        } else if (eventType === 'right') {
+          handleSeek(10);
+          triggerSeekFlash('right');
+        }
+        resetControlsTimer();
+        return;
+      }
+
+      // HUD Controls are VISIBLE
+      if (isScrubberFocusedRef.current) {
+        if (eventType === 'left') {
+          handleScrubberDpad('left');
+          return;
+        }
+        if (eventType === 'right') {
+          handleScrubberDpad('right');
+          return;
+        }
+        if (eventType === 'up') {
+          if (isScrubbingRef.current) {
+            commitScrub();
+          }
+          setIsScrubberFocused(false);
+          isScrubberFocusedRef.current = false;
+          playPauseRef.current?.focus?.();
+          resetControlsTimer();
+          return;
+        }
+        if (eventType === 'select' || eventType === 'center' || keyCode === 23 || keyCode === 66) {
+          if (isScrubbingRef.current) {
+            commitScrub();
+          } else {
+            handleTogglePlay();
+          }
+          resetControlsTimer();
+          return;
+        }
+      } else {
+        // When center controls or other elements are focused, Down navigates to the scrubber
+        if (eventType === 'down') {
+          setIsScrubberFocused(true);
+          isScrubberFocusedRef.current = true;
+          scrubberFocusRef.current?.focus?.();
+          resetControlsTimer();
+          return;
+        }
+      }
+
+      resetControlsTimer();
+    });
+    return () => sub.remove();
+  }, [
+    showControls,
+    showTracksModal,
+    showSettingsModal,
+    showEpisodesModal,
+    handleTogglePlay,
+    handleSeek,
+    handleScrubberDpad,
+    commitScrub,
+    resetControlsTimer,
+  ]);
 
   // Video Load / Progress handlers (Native)
   const handleLoad = useCallback((data: OnLoadData) => {
@@ -807,6 +1253,13 @@ export function PlayerScreen({
     const d = data.duration || 0;
     durationRef.current = d;
     setDuration(d);
+    if (targetSeekTimeRef.current > 0) {
+      const resumeT = targetSeekTimeRef.current;
+      targetSeekTimeRef.current = 0;
+      setTimeout(() => {
+        videoRef.current?.seek(resumeT);
+      }, 100);
+    }
     if (data.audioTracks?.length) {
       setAudioTracks(data.audioTracks.map((t, idx) => ({ index: t.index ?? idx, title: t.title || 'Audio ' + (idx + 1), language: t.language || 'und' })));
     }
@@ -828,6 +1281,8 @@ export function PlayerScreen({
   }, []);
 
   const handleProgress = useCallback((data: OnProgressData) => {
+    if (isScrubbingRef.current) return;
+    if (Date.now() < seekLockUntilRef.current) return;
     currentTimeRef.current = data.currentTime;
     setCurrentTime(data.currentTime);
     if (isLoading) setIsLoading(false);
@@ -843,11 +1298,9 @@ export function PlayerScreen({
     console.warn('Native Video Error:', err);
     setIsLoading(false);
 
-    // Auto-fallback: try alternate native stream first, or fallback to embed
+    // Auto-fallback: prioritize preferred 720p native stream or fallback to embed (NEVER pick 4K)
     const otherSources = availableSources.filter(s => s.id !== source.id);
-    const nextNative = otherSources.find(s => s.format !== 'embed');
-    const nextEmbed = otherSources.find(s => s.format === 'embed');
-    const fallback = nextNative || nextEmbed;
+    const fallback = getPreferred720pSource(otherSources) || otherSources.find(s => s.format === 'embed');
 
     if (fallback && onSelectSource) {
       console.log('Stream playback failed, auto-falling back to:', fallback.name);
@@ -965,7 +1418,7 @@ export function PlayerScreen({
         }
         if (isLoading) setIsLoading(false);
       }
-    } catch {}
+    } catch { }
   };
 
   const handleShouldStartLoad = (request: any) => {
@@ -1024,18 +1477,32 @@ export function PlayerScreen({
     }));
   }, [source.subtitles]);
 
-  const formatTime = (secs: number) => {
+
+
+  const formatCountdown = (secs: number) => {
     const t = Math.floor(Math.max(0, secs));
     const h = Math.floor(t / 3600);
     const m = Math.floor((t % 3600) / 60);
     const s = t % 60;
-    if (h > 0) return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
-    return m + ':' + (s < 10 ? '0' : '') + s;
+    const pad = (n: number) => (n < 10 ? '0' : '') + n;
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
   };
 
-  const curSec = currentTimeRef.current;
-  const durSec = durationRef.current;
-  const progressPercent = durSec > 0 ? Math.min((curSec / durSec) * 100, 100) : 0;
+  const formatElapsed = (secs: number) => {
+    const t = Math.floor(Math.max(0, secs));
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = t % 60;
+    const pad = (n: number) => (n < 10 ? '0' : '') + n;
+    if (h > 0) {
+      return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    }
+    return `${pad(m)}:${pad(s)}`;
+  };
+
+  const curSec = scrubbingTime !== null ? scrubbingTime : (currentTimeRef.current || currentTime);
+  const durSec = durationRef.current || duration;
+  const progressPercent = durSec > 0 ? Math.min(Math.max(0, (curSec / durSec) * 100), 100) : 0;
 
   const handleToggleCC = useCallback(() => {
     if (selectedSubtitleIndex >= 0) {
@@ -1057,12 +1524,12 @@ export function PlayerScreen({
   const videoViewStyle = effectiveFullscreen
     ? styles.videoViewportFullscreen
     : [
-        styles.videoViewportPortrait,
-        {
-          width: screenWidth,
-          height: Math.round(screenWidth * (9 / 16)),
-        },
-      ];
+      styles.videoViewportPortrait,
+      {
+        width: screenWidth,
+        height: Math.round(screenWidth * (9 / 16)),
+      },
+    ];
 
   const safeTop = Math.max(topInset || 0, StatusBar.currentHeight || 0);
 
@@ -1104,14 +1571,33 @@ export function PlayerScreen({
           <View style={StyleSheet.absoluteFill}>
             <Video
               ref={videoRef}
-              source={{ uri: source.url, headers: source.headers }}
+              source={{
+                uri: source.url,
+                headers: source.headers || {
+                  'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                },
+              }}
               style={StyleSheet.absoluteFill}
               resizeMode={resizeMode}
+              useTextureView={true}
+              viewType={ViewType.TEXTURE}
+              playInBackground={false}
+              playWhenInactive={false}
+              ignoreSilentSwitch="ignore"
               rate={playbackSpeed}
               muted={isMuted}
               paused={paused}
+              progressUpdateInterval={250}
               onLoad={handleLoad}
               onProgress={handleProgress}
+              onSeek={(data) => {
+                seekLockUntilRef.current = 0;
+                if (!isScrubbingRef.current) {
+                  currentTimeRef.current = data.currentTime;
+                  setCurrentTime(data.currentTime);
+                }
+              }}
               onAudioTracks={handleAudioTracks}
               onTextTracks={handleTextTracks}
               selectedAudioTrack={selectedAudioIndex >= 0 ? { type: SelectedTrackType.INDEX, value: selectedAudioIndex } : undefined}
@@ -1123,8 +1609,36 @@ export function PlayerScreen({
           </View>
         )}
 
-        {/* 2. Transparent Full-Screen Gesture Layer (Only on Native mode so touches reach Embed WebView) */}
-        {!isEmbed && (
+        {/* 2. Transparent Full-Screen TV Remote Wakeup & Touch Gesture Layer */}
+        {!showControls ? (
+          <TVFocusable
+            hasTVPreferredFocus={!showControls}
+            scaleOnFocus={false}
+            style={StyleSheet.absoluteFill}
+            focusRingStyle={{ borderWidth: 0 }}
+            onPress={resetControlsTimer}
+            onPressUp={resetControlsTimer}
+            onPressDown={resetControlsTimer}
+            onPressLeft={() => {
+              handleSeek(-10);
+              triggerSeekFlash('left');
+              resetControlsTimer();
+            }}
+            onPressRight={() => {
+              handleSeek(10);
+              triggerSeekFlash('right');
+              resetControlsTimer();
+            }}
+            onKeyDown={e => {
+              const key = e.nativeEvent?.key || e.nativeEvent?.code || '';
+              const keyCode = e.nativeEvent?.keyCode;
+              if (keyCode === 85 || keyCode === 126 || keyCode === 127 || key === 'MediaPlayPause' || key === 'Space') {
+                handleTogglePlay();
+              }
+              resetControlsTimer();
+            }}
+          />
+        ) : (
           <TouchableWithoutFeedback onPress={handleScreenTouch}>
             <View style={StyleSheet.absoluteFill} />
           </TouchableWithoutFeedback>
@@ -1163,11 +1677,14 @@ export function PlayerScreen({
             ]}
             pointerEvents="box-none">
             <TVFocusable
-              hasTVPreferredFocus={true}
+              hasTVPreferredFocus={false}
               scaleOnFocus
               style={[styles.skipBtn, isTV && styles.skipBtnTV]}
               focusedStyle={styles.skipBtnFocused}
               activeOpacity={0.8}
+              onFocus={resetControlsTimer}
+              onPressDown={() => scrubberFocusRef.current?.focus?.()}
+              onPressUp={() => playPauseRef.current?.focus?.()}
               onPress={handleSkipCurrentSegment}>
               <View style={styles.skipBtnContent}>
                 <Text style={[styles.skipBtnText, isTV && styles.skipBtnTextTV]}>
@@ -1181,128 +1698,288 @@ export function PlayerScreen({
 
         {/* 5. UNIFIED CONTROLS HUD (Rendered for BOTH Embed & Native) */}
         {showControls && (
-          <View style={[StyleSheet.absoluteFill, { zIndex: 60 }]} pointerEvents="box-none">
+          <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 60, opacity: controlsOpacity }]} pointerEvents="box-none">
 
-            {/* Minimal Back Button (Top Left) */}
+            {/* Top Bar: Back Button (Left) + Action Icons (Right) */}
             <View
               style={[
-                styles.floatingBackWrap,
+                styles.topBar,
+                isTV && styles.topBarTV,
                 {
-                  top: isTV ? 20 : (effectiveFullscreen ? Math.max(safeTop, 16) : 12),
-                  left: isTV ? 28 : 12,
+                  top: isTV ? 20 : (effectiveFullscreen ? (StatusBar.currentHeight || 16) : 12),
                 },
               ]}
               pointerEvents="box-none">
+              {/* Back Button */}
               <TVFocusable
-                style={[styles.glassBtn, isTV && styles.glassBtnTV]}
-                focusedStyle={styles.glassBtnFocused}
+                style={[styles.plainIconBtn, isTV && styles.plainIconBtnTV]}
+                focusedStyle={styles.plainIconBtnFocused}
                 activeOpacity={0.7}
-                onPress={() => { if (isFullscreen) toggleFullscreen(); else onClose(); }}>
-                <BackIcon color="#FFFFFF" size={isTV ? 20 : 16} />
+                onFocus={resetControlsTimer}
+                onPress={() => { if (isFullscreen) toggleFullscreen(); else handleClosePlayer(); }}>
+                <BackIcon color="#FFFFFF" size={isTV ? 24 : 20} />
               </TVFocusable>
+
+              {/* Right-side action icons */}
+              <View style={styles.topRightActions} pointerEvents="box-none">
+                {/* Quality pill */}
+                <TVFocusable
+                  style={[styles.qualityPillBtn, isTV && styles.qualityPillBtnTV]}
+                  focusedStyle={styles.plainIconBtnFocused}
+                  activeOpacity={0.7}
+                  onFocus={resetControlsTimer}
+                  onPress={() => {
+                    setSettingsInitialTab('quality');
+                    setShowSettingsModal(true);
+                  }}>
+                  <Text style={[styles.qualityPillText, isTV && styles.qualityPillTextTV]}>
+                    {source.quality || 'HD'}
+                  </Text>
+                </TVFocusable>
+
+                {/* CC Quick Toggle */}
+                <TVFocusable
+                  style={[styles.plainIconBtn, isTV && styles.plainIconBtnTV, selectedSubtitleIndex >= 0 && styles.plainIconBtnActive]}
+                  focusedStyle={styles.plainIconBtnFocused}
+                  activeOpacity={0.7}
+                  onFocus={resetControlsTimer}
+                  onPress={handleToggleCC}>
+                  <CCIcon color={selectedSubtitleIndex >= 0 ? '#4ADE80' : '#FFFFFF'} size={isTV ? 22 : 18} />
+                </TVFocusable>
+
+                {/* Episodes button (TV series only) */}
+                {media.type === 'tv' && (
+                  <TVFocusable
+                    style={[styles.plainIconBtn, isTV && styles.plainIconBtnTV]}
+                    focusedStyle={styles.plainIconBtnFocused}
+                    activeOpacity={0.7}
+                    onFocus={resetControlsTimer}
+                    onPress={() => setShowEpisodesModal(true)}>
+                    <EpisodesIcon color="#FFFFFF" size={isTV ? 22 : 18} />
+                  </TVFocusable>
+                )}
+
+                {/* Settings */}
+                <TVFocusable
+                  style={[styles.plainIconBtn, isTV && styles.plainIconBtnTV]}
+                  focusedStyle={styles.plainIconBtnFocused}
+                  activeOpacity={0.7}
+                  onFocus={resetControlsTimer}
+                  onPress={() => {
+                    setSettingsInitialTab('subtitles');
+                    setShowSettingsModal(true);
+                  }}>
+                  <SettingsIcon color="#FFFFFF" size={isTV ? 22 : 18} />
+                </TVFocusable>
+              </View>
             </View>
 
-            {/* Center Playback Controls (Liquid Glass Style) */}
-            <View style={[styles.centerControls, isTV && { gap: 40 }]} pointerEvents="box-none">
+            {/* Center Playback Controls (Rewind | Play/Pause | Forward) */}
+            <View style={[styles.centerControls, isTV && { gap: 44 }]} pointerEvents="box-none">
               {/* Rewind 10s */}
               <TVFocusable
-                style={[styles.glassBtn, isTV && styles.glassBtnTV]}
-                focusedStyle={styles.glassBtnFocused}
+                style={[styles.plainIconBtnLarge, isTV && styles.plainIconBtnLargeTV]}
+                focusedStyle={styles.plainIconBtnFocused}
                 activeOpacity={0.7}
+                onFocus={resetControlsTimer}
+                onPressDown={() => {
+                  playPauseRef.current?.blur?.();
+                  scrubberFocusRef.current?.focus?.();
+                }}
                 onPress={() => {
                   handleSeek(-10);
                   triggerSeekFlash('left');
+                  resetControlsTimer();
                 }}>
-                <Replay10Icon color="#FFFFFF" size={isTV ? 28 : 22} />
+                <Replay10Icon color="#FFFFFF" size={isTV ? 42 : 36} />
               </TVFocusable>
 
-              {/* Play / Pause */}
+              {/* Play / Pause (circular glass button) */}
               <TVFocusable
+                ref={playPauseRef}
                 style={[styles.glassBtnLarge, isTV && styles.glassBtnLargeTV]}
                 focusedStyle={styles.glassBtnFocused}
                 activeOpacity={0.7}
-                hasTVPreferredFocus={true}
+                hasTVPreferredFocus={showControls && !isScrubberFocused}
+                onFocus={() => {
+                  setIsScrubberFocused(false);
+                  isScrubberFocusedRef.current = false;
+                  resetControlsTimer();
+                }}
+                onPressDown={() => {
+                  playPauseRef.current?.blur?.();
+                  scrubberFocusRef.current?.focus?.();
+                }}
                 onPress={handleTogglePlay}>
-                {paused ? <PlayIcon color="#FFFFFF" size={isTV ? 28 : 22} /> : <PauseIcon color="#FFFFFF" size={isTV ? 26 : 20} />}
+                {paused ? <PlayIcon color="#FFFFFF" size={isTV ? 30 : 26} /> : <PauseIcon color="#FFFFFF" size={isTV ? 28 : 24} />}
               </TVFocusable>
 
               {/* Forward 10s */}
               <TVFocusable
-                style={[styles.glassBtn, isTV && styles.glassBtnTV]}
-                focusedStyle={styles.glassBtnFocused}
+                style={[styles.plainIconBtnLarge, isTV && styles.plainIconBtnLargeTV]}
+                focusedStyle={styles.plainIconBtnFocused}
                 activeOpacity={0.7}
+                onFocus={resetControlsTimer}
+                onPressDown={() => {
+                  playPauseRef.current?.blur?.();
+                  scrubberFocusRef.current?.focus?.();
+                }}
                 onPress={() => {
                   handleSeek(10);
                   triggerSeekFlash('right');
+                  resetControlsTimer();
                 }}>
-                <Forward10Icon color="#FFFFFF" size={isTV ? 28 : 22} />
+                <Forward10Icon color="#FFFFFF" size={isTV ? 42 : 36} />
               </TVFocusable>
             </View>
 
             {/* Bottom Timeline Bar */}
-            <View style={[styles.bottomBar, isTV && styles.bottomBarTV]}>
-              <Text style={[styles.timeLabel, isTV && styles.timeLabelTV]}>{formatTime(currentTime)}</Text>
-
-              {/* Interactive Scrubber Track */}
-              <TouchableOpacity
-                activeOpacity={1}
-                style={styles.progressTrackWrap}
-                onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-                onPress={(e) => {
-                  if (durationRef.current > 0 && trackWidth > 0) {
-                    const ratio = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidth));
-                    const target = ratio * durationRef.current;
-                    handleSeekTo(target);
-                  }
-                }}>
-                <View style={[styles.progressTrack, isTV && styles.progressTrackTV]} pointerEvents="none">
-                  {/* Intro & Recap Highlights on Seekbar */}
-                  {recapMarkerStyle && (
-                    <View style={[styles.recapMarker, recapMarkerStyle]} pointerEvents="none" />
-                  )}
-                  {introMarkerStyle && (
-                    <View style={[styles.introMarker, introMarkerStyle]} pointerEvents="none" />
-                  )}
-                  <View style={[styles.progressFill, { width: progressPercent + '%' }]} pointerEvents="none" />
-                </View>
-                <View style={[styles.progressThumb, isTV && styles.progressThumbTV, { left: progressPercent + '%' }]} pointerEvents="none" />
-              </TouchableOpacity>
-
-              <Text style={[styles.timeLabel, isTV && styles.timeLabelTV]}>{formatTime(duration)}</Text>
-
-              {/* CC Quick Toggle */}
-              <TVFocusable
-                style={[styles.glassBtnSmall, isTV && styles.glassBtnSmallTV, selectedSubtitleIndex >= 0 && styles.glassBtnActive]}
-                focusedStyle={styles.glassBtnFocused}
-                activeOpacity={0.7}
-                onPress={handleToggleCC}>
-                <CCIcon color={selectedSubtitleIndex >= 0 ? '#4ADE80' : '#FFFFFF'} size={isTV ? 19 : 15} />
-              </TVFocusable>
-
-              {/* Player Settings (CC, Speed, Aspect Ratio, Audio) */}
-              <TVFocusable
-                style={[styles.glassBtnSmall, isTV && styles.glassBtnSmallTV]}
-                focusedStyle={styles.glassBtnFocused}
-                activeOpacity={0.7}
-                onPress={() => setShowSettingsModal(true)}>
-                <SettingsIcon color="#FFFFFF" size={isTV ? 19 : 15} />
-              </TVFocusable>
-
-              {/* Fullscreen Toggle (shown when not on TV) */}
+            <View
+              pointerEvents="box-none"
+              style={[
+                styles.bottomBar,
+                isTV
+                  ? styles.bottomBarTV
+                  : effectiveFullscreen
+                    ? styles.bottomBarLandscape
+                    : styles.bottomBarPortrait,
+              ]}>
+              {/* Row above progress slider containing Fullscreen Toggle (Right-aligned) */}
               {!isTV && (
-                <TVFocusable
-                  style={styles.glassBtnSmall}
-                  focusedStyle={styles.glassBtnFocused}
-                  activeOpacity={0.7}
-                  onPress={toggleFullscreen}>
-                  {isFullscreen
-                    ? <ExitFullscreenIcon color="#FFFFFF" size={15} />
-                    : <FullscreenIcon color="#FFFFFF" size={15} />}
-                </TVFocusable>
+                <View style={styles.aboveSliderRow} pointerEvents="box-none">
+                  <TVFocusable
+                    style={styles.plainIconBtn}
+                    focusedStyle={styles.plainIconBtnFocused}
+                    activeOpacity={0.7}
+                    onFocus={resetControlsTimer}
+                    onPress={toggleFullscreen}>
+                    {isFullscreen
+                      ? <ExitFullscreenIcon color="#FFFFFF" size={19} />
+                      : <FullscreenIcon color="#FFFFFF" size={19} />}
+                  </TVFocusable>
+                </View>
               )}
+
+              {/* Progress Slider Row */}
+              <View style={styles.sliderRow} pointerEvents="box-none">
+                {/* Interactive TV Focusable Scrubber Track */}
+                <TVFocusable
+                  ref={scrubberFocusRef}
+                  style={styles.progressTrackWrap}
+                  scaleOnFocus={false}
+                  focusRingStyle={{ borderWidth: 0 }}
+                  hasTVPreferredFocus={showControls && isScrubberFocused}
+                  onFocus={() => {
+                    setIsScrubberFocused(true);
+                    isScrubberFocusedRef.current = true;
+                    resetControlsTimer();
+                  }}
+                  onBlur={() => {
+                    if (!isScrubbingRef.current) {
+                      setIsScrubberFocused(false);
+                      isScrubberFocusedRef.current = false;
+                    }
+                  }}
+                  onPress={() => {
+                    if (isScrubbingRef.current) {
+                      commitScrub();
+                    } else {
+                      handleTogglePlay();
+                    }
+                  }}
+                  onPressUp={() => {
+                    if (isScrubbingRef.current) {
+                      commitScrub();
+                    }
+                    setIsScrubberFocused(false);
+                    isScrubberFocusedRef.current = false;
+                    playPauseRef.current?.focus?.();
+                    resetControlsTimer();
+                  }}
+                  onPressLeft={() => handleScrubberDpad('left')}
+                  onPressRight={() => handleScrubberDpad('right')}>
+                  {({ focused }) => {
+                    const isHighlighted = focused || isScrubberFocused;
+                    return (
+                      <View
+                        ref={trackRef}
+                        style={[StyleSheet.absoluteFill, { justifyContent: 'center' }]}
+                        hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}
+                        onLayout={() => {
+                          trackRef.current?.measure((_x: number, _y: number, width: number, _height: number, pageX: number) => {
+                            if (width > 0) {
+                              trackWidthRef.current = width;
+                              trackLeftRef.current = pageX;
+                              setTrackWidth(width);
+                            }
+                          });
+                        }}
+                        onStartShouldSetResponder={() => true}
+                        onMoveShouldSetResponder={() => true}
+                        onResponderGrant={handleScrubberGrant}
+                        onResponderMove={handleScrubberMove}
+                        onResponderRelease={handleScrubberRelease}
+                        onResponderTerminate={handleScrubberTerminate}>
+
+                        {/* Floating Time Tooltip when Scrubber is focused or scrubbing */}
+                        {isHighlighted && (
+                          <View
+                            style={[
+                              styles.scrubberTooltip,
+                              { left: progressPercent + '%' },
+                            ]}
+                            pointerEvents="none">
+                            <Text style={styles.scrubberTooltipText}>
+                              {formatElapsed(curSec)}
+                            </Text>
+                          </View>
+                        )}
+
+                        <View
+                          style={[
+                            styles.progressTrack,
+                            isTV && styles.progressTrackTV,
+                            isHighlighted && styles.progressTrackFocused,
+                          ]}
+                          pointerEvents="none">
+                          {/* Intro & Recap Highlights on Seekbar */}
+                          {recapMarkerStyle && (
+                            <View style={[styles.recapMarker, recapMarkerStyle]} pointerEvents="none" />
+                          )}
+                          {introMarkerStyle && (
+                            <View style={[styles.introMarker, introMarkerStyle]} pointerEvents="none" />
+                          )}
+                          <View
+                            style={[
+                              styles.progressFill,
+                              { width: progressPercent + '%' },
+                              isHighlighted && styles.progressFillFocused,
+                            ]}
+                            pointerEvents="none"
+                          />
+                        </View>
+                        <View
+                          style={[
+                            styles.progressThumb,
+                            isTV && styles.progressThumbTV,
+                            isHighlighted && styles.progressThumbFocused,
+                            { left: progressPercent + '%' },
+                          ]}
+                          pointerEvents="none"
+                        />
+                      </View>
+                    );
+                  }}
+                </TVFocusable>
+
+                {/* Countdown only in the last with hh:mm:ss */}
+                <Text style={[styles.timeLabel, styles.countdownLabel, isTV && styles.timeLabelTV, isTV && styles.countdownLabelTV]}>
+                  {formatCountdown(Math.max(0, durSec - curSec))}
+                </Text>
+              </View>
             </View>
 
-          </View>
+          </Animated.View>
         )}
 
         {/* 6. Loading Overlay */}
@@ -1348,64 +2025,6 @@ export function PlayerScreen({
               </TVFocusable>
             )}
           </View>
-
-          {/* Player Mode Switcher: Native | Embed */}
-          <View style={styles.modeRow}>
-            {nativeSources.length > 0 && (
-              <TouchableOpacity
-                style={[styles.modeBtn, !isEmbed && styles.modeBtnActive]}
-                onPress={() => onSelectSource && onSelectSource(nativeSources[0])}>
-                <Text style={[styles.modeBtnText, !isEmbed && styles.modeBtnTextActive]}>Native</Text>
-              </TouchableOpacity>
-            )}
-            {embedSources.length > 0 && (
-              <TouchableOpacity
-                style={[styles.modeBtn, isEmbed && styles.modeBtnActive]}
-                onPress={() => onSelectSource && onSelectSource(embedSources[0])}>
-                <Text style={[styles.modeBtnText, isEmbed && styles.modeBtnTextActive]}>Embed</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Server Selector Button */}
-          <TouchableOpacity
-            style={styles.serverBtn}
-            onPress={() => setServerDropdownOpen(!serverDropdownOpen)}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.serverLabel}>SERVER</Text>
-              <Text style={styles.serverName} numberOfLines={1}>{source.name}</Text>
-            </View>
-            <ChevronDownIcon color="#64748B" size={14} />
-          </TouchableOpacity>
-
-          {/* Server Dropdown List (Shows only sources matching current mode) */}
-          {serverDropdownOpen && (
-            <View style={styles.dropdownList}>
-              {(isEmbed ? embedSources : nativeSources).map((s) => {
-                const isActive = s.id === source.id;
-                return (
-                  <TouchableOpacity
-                    key={s.id}
-                    style={[styles.dropdownItem, isActive && styles.dropdownItemActive]}
-                    onPress={() => {
-                      onSelectSource && onSelectSource(s);
-                      setServerDropdownOpen(false);
-                    }}>
-                    <View style={styles.dropdownItemLeft}>
-                      <View style={styles.qualityBadge}>
-                        <Text style={styles.qualityBadgeText}>{s.quality}</Text>
-                      </View>
-                      <View>
-                        <Text style={styles.dropdownItemName} numberOfLines={1}>{s.name}</Text>
-                        <Text style={styles.dropdownItemSub}>{s.format === 'embed' ? 'Embed Server' : 'Direct Native Stream'}</Text>
-                      </View>
-                    </View>
-                    {isActive && <View style={styles.activeIndicator} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
 
           {/* TV Seasons & Episodes Section */}
           {media.type === 'tv' && (
@@ -1515,10 +2134,13 @@ export function PlayerScreen({
         onToggleAutoSkipIntro={() => setAutoSkipIntro(prev => !prev)}
         audioTracks={audioTracks}
         subtitleTracks={subtitleTracks}
+        qualityOptions={curatedQualities}
+        currentSource={source}
         selectedAudioIndex={selectedAudioIndex}
         selectedSubtitleIndex={selectedSubtitleIndex}
         subtitleSize={subtitleSize}
         subtitleOffset={subtitleOffset}
+        initialTab={settingsInitialTab}
         onClose={() => setShowSettingsModal(false)}
         onSelectSpeed={(speed) => { setPlaybackSpeed(speed); }}
         onSelectResizeMode={(mode) => setResizeMode(mode)}
@@ -1527,6 +2149,7 @@ export function PlayerScreen({
         onSelectSubtitle={handleSelectSubtitle}
         onSelectSubtitleSize={(sz) => setSubtitleSize(sz)}
         onSelectSubtitleOffset={(off) => setSubtitleOffset(off)}
+        onSelectSource={handleSelectQualitySource}
       />
 
       {/* Seasons & Episodes Modal */}
@@ -1616,53 +2239,51 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Floating back button layout
-  floatingBackWrap: {
-    position: 'absolute',
-    zIndex: 100,
-    elevation: 10,
-  },
+
+
+  // Top bar HUD (Back on left, Action Icons on right)
   topBar: {
     position: 'absolute',
-    left: 12,
-    right: 12,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    zIndex: 100,
-    elevation: 10,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    zIndex: 70,
   },
-  topRightControls: {
+  topBarTV: {
+    paddingHorizontal: 32,
+  },
+  topRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
-  glassPillBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+
+  // Plain borderless icon buttons (No circles)
+  plainIconBtn: {
+    padding: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: 4,
   },
-  glassPillBtnTV: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    gap: 6,
+  plainIconBtnTV: {
+    padding: 10,
   },
-  glassPillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+  plainIconBtnLarge: {
+    padding: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  glassPillTextTV: {
-    fontSize: 13,
+  plainIconBtnLargeTV: {
+    padding: 16,
+  },
+  plainIconBtnFocused: {
+    transform: [{ scale: 1.18 }],
+    opacity: 1,
+  },
+  plainIconBtnActive: {
+    opacity: 1,
   },
 
   // Top-left back button
@@ -1704,19 +2325,17 @@ const styles = StyleSheet.create({
     borderRadius: 22,
   },
   glassBtnLarge: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: 'rgba(255,255,255,0.22)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.32)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   glassBtnLargeTV: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
   },
   glassBtnFocused: {
     borderColor: '#FFFFFF',
@@ -1726,6 +2345,31 @@ const styles = StyleSheet.create({
   glassBtnActive: {
     backgroundColor: 'rgba(74,222,128,0.2)',
     borderColor: 'rgba(74,222,128,0.5)',
+  },
+  qualityPillBtn: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qualityPillBtnTV: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
+  qualityPillText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  qualityPillTextTV: {
+    fontSize: 14,
+    fontWeight: '800',
   },
 
   // Center playback controls
@@ -1741,20 +2385,39 @@ const styles = StyleSheet.create({
   // Bottom timeline bar
   bottomBar: {
     position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    paddingTop: 6,
-    gap: 8,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    left: 0, right: 0,
+    flexDirection: 'column',
+  },
+  bottomBarPortrait: {
+    bottom: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 16,
+    paddingTop: 0,
+  },
+  bottomBarLandscape: {
+    bottom: 40,
+    paddingBottom: 0,
+    paddingHorizontal: 50,
+    paddingTop: 0,
   },
   bottomBarTV: {
-    paddingHorizontal: 28,
-    paddingBottom: 20,
-    paddingTop: 10,
-    gap: 12,
+    bottom: 0,
+    paddingHorizontal: 32,
+    paddingBottom: 36,
+    paddingTop: 12,
+  },
+  aboveSliderRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 0,
+    marginBottom: 0,
+  },
+  sliderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
   },
   timeLabel: {
     color: 'rgba(255,255,255,0.85)',
@@ -1766,9 +2429,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     minWidth: 48,
   },
+  countdownLabel: {
+    minWidth: 54,
+    textAlign: 'right',
+  },
+  countdownLabelTV: {
+    minWidth: 72,
+    textAlign: 'right',
+  },
   progressTrackWrap: {
     flex: 1,
-    height: 24,
+    height: 36,
     justifyContent: 'center',
   },
   progressTrack: {
@@ -1793,7 +2464,7 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: '#FFFFFF',
-    top: 6,
+    top: 12,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.3,
@@ -1804,8 +2475,55 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    top: 4,
+    top: 10,
     marginLeft: -8,
+  },
+  progressTrackFocused: {
+    height: 8,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+  progressFillFocused: {
+    backgroundColor: '#E50914',
+  },
+  progressThumbFocused: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    top: 6,
+    marginLeft: -12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 3,
+    borderColor: '#E50914',
+    elevation: 8,
+    shadowColor: '#E50914',
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+  },
+  scrubberTooltip: {
+    position: 'absolute',
+    top: -38,
+    marginLeft: -32,
+    backgroundColor: 'rgba(20, 20, 20, 0.95)',
+    borderWidth: 1.5,
+    borderColor: '#E50914',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    minWidth: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  scrubberTooltipText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textAlign: 'center',
   },
 
   introMarker: {

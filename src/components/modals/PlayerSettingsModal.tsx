@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { TVFocusable } from '../common/TVFocusable';
 import {
@@ -18,6 +19,14 @@ import {
 } from '../common/Icons';
 import { AudioTrackOption, SubtitleTrackOption } from './TracksModal';
 import { ResizeMode } from 'react-native-video';
+import { StreamSource } from '../../services/providers';
+
+export interface CleanQualityOption {
+  tier: '4K' | '1080p' | '720p' | '480p' | 'Embed';
+  label: string;
+  source: StreamSource;
+  isNative: boolean;
+}
 
 export interface PlayerSettingsModalProps {
   visible: boolean;
@@ -28,10 +37,13 @@ export interface PlayerSettingsModalProps {
   autoSkipIntro?: boolean;
   audioTracks: AudioTrackOption[];
   subtitleTracks: SubtitleTrackOption[];
+  qualityOptions?: CleanQualityOption[];
+  currentSource?: StreamSource;
   selectedAudioIndex: number;
   selectedSubtitleIndex: number;
   subtitleSize: number;
   subtitleOffset: number;
+  initialTab?: SettingsTab;
   onClose: () => void;
   onSelectSpeed: (speed: number) => void;
   onSelectResizeMode: (mode: ResizeMode) => void;
@@ -41,9 +53,10 @@ export interface PlayerSettingsModalProps {
   onSelectSubtitle: (index: number) => void;
   onSelectSubtitleSize: (size: number) => void;
   onSelectSubtitleOffset: (offset: number) => void;
+  onSelectSource?: (source: StreamSource) => void;
 }
 
-type SettingsTab = 'subtitles' | 'playback' | 'audio' | 'display';
+export type SettingsTab = 'quality' | 'subtitles' | 'playback' | 'audio' | 'display';
 
 export function PlayerSettingsModal({
   visible,
@@ -54,10 +67,13 @@ export function PlayerSettingsModal({
   autoSkipIntro = false,
   audioTracks,
   subtitleTracks,
+  qualityOptions = [],
+  currentSource,
   selectedAudioIndex,
   selectedSubtitleIndex,
   subtitleSize,
   subtitleOffset,
+  initialTab = 'quality',
   onClose,
   onSelectSpeed,
   onSelectResizeMode,
@@ -67,8 +83,18 @@ export function PlayerSettingsModal({
   onSelectSubtitle,
   onSelectSubtitleSize,
   onSelectSubtitleOffset,
+  onSelectSource,
 }: PlayerSettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('subtitles');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'quality');
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+
+  // Sync initial tab when modal opens
+  React.useEffect(() => {
+    if (visible && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [visible, initialTab]);
 
   if (!visible) return null;
 
@@ -95,13 +121,26 @@ export function PlayerSettingsModal({
       animationType="fade"
       transparent={true}
       onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, isLandscape && { backgroundColor: 'transparent' }]}>
         <TouchableOpacity
           style={styles.dismissOverlay}
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={styles.sheet}>
+        <View style={[
+          styles.sheet,
+          isLandscape && { 
+            maxWidth: '100%', 
+            maxHeight: '100%',
+            height: '100%', 
+            backgroundColor: 'rgba(15, 23, 42, 0.9)', 
+            borderWidth: 0, 
+            paddingBottom: 0,
+            borderTopLeftRadius: 0,
+            borderTopRightRadius: 0,
+            paddingHorizontal: 60,
+          }
+        ]}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
@@ -115,13 +154,23 @@ export function PlayerSettingsModal({
 
           {/* Navigation Tabs */}
           <View style={styles.tabBar}>
+            {qualityOptions.length > 0 && (
+              <TVFocusable
+                style={[styles.tabBtn, activeTab === 'quality' && styles.tabBtnActive]}
+                focusedStyle={styles.tabBtnFocused}
+                onPress={() => setActiveTab('quality')}>
+                <Text style={[styles.tabBtnText, activeTab === 'quality' && styles.tabBtnTextActive]}>
+                  Quality
+                </Text>
+              </TVFocusable>
+            )}
+
             <TVFocusable
               style={[styles.tabBtn, activeTab === 'subtitles' && styles.tabBtnActive]}
               focusedStyle={styles.tabBtnFocused}
               onPress={() => setActiveTab('subtitles')}>
-              <CCIcon color={activeTab === 'subtitles' ? '#FFFFFF' : '#94A3B8'} size={14} />
               <Text style={[styles.tabBtnText, activeTab === 'subtitles' && styles.tabBtnTextActive]}>
-                CC / Subs
+                Subtitles
               </Text>
             </TVFocusable>
 
@@ -139,7 +188,7 @@ export function PlayerSettingsModal({
               focusedStyle={styles.tabBtnFocused}
               onPress={() => setActiveTab('display')}>
               <Text style={[styles.tabBtnText, activeTab === 'display' && styles.tabBtnTextActive]}>
-                Aspect Ratio
+                Aspect
               </Text>
             </TVFocusable>
 
@@ -147,7 +196,6 @@ export function PlayerSettingsModal({
               style={[styles.tabBtn, activeTab === 'audio' && styles.tabBtnActive]}
               focusedStyle={styles.tabBtnFocused}
               onPress={() => setActiveTab('audio')}>
-              <AudioIcon color={activeTab === 'audio' ? '#FFFFFF' : '#94A3B8'} size={14} />
               <Text style={[styles.tabBtnText, activeTab === 'audio' && styles.tabBtnTextActive]}>
                 Audio
               </Text>
@@ -160,10 +208,40 @@ export function PlayerSettingsModal({
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}>
 
+            {/* TAB: VIDEO STREAM QUALITY */}
+            {activeTab === 'quality' && (
+              <View style={styles.sectionWrap}>
+
+                {qualityOptions.map((opt) => {
+                  const isSelected = currentSource?.id === opt.source.id;
+                  return (
+                    <TVFocusable
+                      key={'qual-' + opt.tier + '-' + opt.source.id}
+                      hasTVPreferredFocus={isSelected}
+                      style={[styles.itemRow, isSelected && styles.itemRowSelected]}
+                      focusedStyle={styles.itemRowFocused}
+                      onPress={() => {
+                        onSelectSource && onSelectSource(opt.source);
+                        onClose();
+                      }}>
+                      <View style={styles.itemInfo}>
+                        <Text style={styles.itemTitle}>{opt.label}</Text>
+                        
+                      </View>
+                      {isSelected && (
+                        <View style={styles.checkedCircle}>
+                          <CheckIcon color="#FFFFFF" size={12} />
+                        </View>
+                      )}
+                    </TVFocusable>
+                  );
+                })}
+              </View>
+            )}
+
             {/* TAB: SUBTITLES & CLOSED CAPTIONS */}
             {activeTab === 'subtitles' && (
               <View style={styles.sectionWrap}>
-                <Text style={styles.sectionHeader}>CLOSED CAPTIONS TRACK</Text>
 
                 {/* Subtitle Track Items */}
                 <TVFocusable
@@ -172,8 +250,8 @@ export function PlayerSettingsModal({
                   focusedStyle={styles.itemRowFocused}
                   onPress={() => onSelectSubtitle(-1)}>
                   <View style={styles.itemInfo}>
-                    <Text style={styles.itemTitle}>Off (Disable Subtitles)</Text>
-                    <Text style={styles.itemSub}>No closed captions</Text>
+                    <Text style={styles.itemTitle}>Off</Text>
+                    
                   </View>
                   {selectedSubtitleIndex === -1 && (
                     <View style={styles.checkedCircle}>
@@ -192,9 +270,7 @@ export function PlayerSettingsModal({
                       onPress={() => onSelectSubtitle(track.index)}>
                       <View style={styles.itemInfo}>
                         <Text style={styles.itemTitle}>{track.title}</Text>
-                        <Text style={styles.itemSub}>
-                          {track.language ? track.language.toUpperCase() : 'CC Subtitle'} · HDHub / OpenSubtitles
-                        </Text>
+                        
                       </View>
                       {isSelected && (
                         <View style={styles.checkedCircle}>
@@ -208,7 +284,7 @@ export function PlayerSettingsModal({
                 {/* CC Customization options (only when subtitles enabled) */}
                 {selectedSubtitleIndex >= 0 && (
                   <>
-                    <Text style={[styles.sectionHeader, { marginTop: 16 }]}>SUBTITLE FONT SIZE</Text>
+
                     <View style={styles.gridRow}>
                       {sizeList.map(s => {
                         const isChosen = subtitleSize === s.value;
@@ -226,7 +302,6 @@ export function PlayerSettingsModal({
                       })}
                     </View>
 
-                    <Text style={[styles.sectionHeader, { marginTop: 16 }]}>SUBTITLE SYNC OFFSET</Text>
                     <View style={styles.gridRow}>
                       {offsetList.map(o => {
                         const isChosen = subtitleOffset === o.value;
@@ -251,27 +326,7 @@ export function PlayerSettingsModal({
             {/* TAB: PLAYBACK SPEED & INTRO AUTO-SKIP */}
             {activeTab === 'playback' && (
               <View style={styles.sectionWrap}>
-                {onToggleAutoSkipIntro && (
-                  <>
-                    <Text style={styles.sectionHeader}>SMART SEGMENTS</Text>
-                    <TVFocusable
-                      style={[styles.itemRow, autoSkipIntro && styles.itemRowSelected]}
-                      focusedStyle={styles.itemRowFocused}
-                      onPress={onToggleAutoSkipIntro}>
-                      <View style={styles.itemInfo}>
-                        <Text style={styles.itemTitle}>Auto-Skip Intro & Recap</Text>
-                        <Text style={styles.itemSub}>
-                          {autoSkipIntro ? 'Enabled: Automatically skips intro & recap segments' : 'Disabled: Displays Skip button when intro is detected'}
-                        </Text>
-                      </View>
-                      <View style={[styles.checkedCircle, autoSkipIntro && { backgroundColor: '#E50914' }]}>
-                        {autoSkipIntro && <CheckIcon color="#FFFFFF" size={12} />}
-                      </View>
-                    </TVFocusable>
-                  </>
-                )}
 
-                <Text style={[styles.sectionHeader, { marginTop: onToggleAutoSkipIntro ? 16 : 4 }]}>PLAYBACK RATE</Text>
                 {speedList.map(speed => {
                   const isSelected = playbackSpeed === speed;
                   return (
@@ -282,7 +337,7 @@ export function PlayerSettingsModal({
                       onPress={() => onSelectSpeed(speed)}>
                       <View style={styles.itemInfo}>
                         <Text style={styles.itemTitle}>{speed}x Speed</Text>
-                        <Text style={styles.itemSub}>{speed === 1.0 ? 'Normal Speed' : speed < 1.0 ? 'Slow Motion' : 'Fast Playback'}</Text>
+                        
                       </View>
                       {isSelected && (
                         <View style={styles.checkedCircle}>
@@ -298,15 +353,14 @@ export function PlayerSettingsModal({
             {/* TAB: DISPLAY & ASPECT RATIO */}
             {activeTab === 'display' && (
               <View style={styles.sectionWrap}>
-                <Text style={styles.sectionHeader}>ASPECT RATIO / RESIZE MODE</Text>
 
                 <TVFocusable
                   style={[styles.itemRow, resizeMode === ResizeMode.CONTAIN && styles.itemRowSelected]}
                   focusedStyle={styles.itemRowFocused}
                   onPress={() => onSelectResizeMode(ResizeMode.CONTAIN)}>
                   <View style={styles.itemInfo}>
-                    <Text style={styles.itemTitle}>Fit (Contain)</Text>
-                    <Text style={styles.itemSub}>Preserve original aspect ratio with black bars if necessary</Text>
+                    <Text style={styles.itemTitle}>Contain</Text>
+                    
                   </View>
                   {resizeMode === ResizeMode.CONTAIN && (
                     <View style={styles.checkedCircle}>
@@ -320,8 +374,8 @@ export function PlayerSettingsModal({
                   focusedStyle={styles.itemRowFocused}
                   onPress={() => onSelectResizeMode(ResizeMode.COVER)}>
                   <View style={styles.itemInfo}>
-                    <Text style={styles.itemTitle}>Zoom (Cover)</Text>
-                    <Text style={styles.itemSub}>Fill entire screen by cropping edges</Text>
+                    <Text style={styles.itemTitle}>Cover</Text>
+                    
                   </View>
                   {resizeMode === ResizeMode.COVER && (
                     <View style={styles.checkedCircle}>
@@ -336,7 +390,7 @@ export function PlayerSettingsModal({
                   onPress={() => onSelectResizeMode(ResizeMode.STRETCH)}>
                   <View style={styles.itemInfo}>
                     <Text style={styles.itemTitle}>Stretch</Text>
-                    <Text style={styles.itemSub}>Stretch video to fill entire screen without cropping</Text>
+                    
                   </View>
                   {resizeMode === ResizeMode.STRETCH && (
                     <View style={styles.checkedCircle}>
@@ -350,24 +404,9 @@ export function PlayerSettingsModal({
             {/* TAB: AUDIO */}
             {activeTab === 'audio' && (
               <View style={styles.sectionWrap}>
-                <Text style={styles.sectionHeader}>VOLUME & MUTE</Text>
-
-                <TVFocusable
-                  style={[styles.itemRow, isMuted && styles.itemRowSelected]}
-                  focusedStyle={styles.itemRowFocused}
-                  onPress={onToggleMute}>
-                  <View style={styles.itemInfo}>
-                    <Text style={styles.itemTitle}>{isMuted ? 'Muted (Audio Off)' : 'Audio Enabled (Volume On)'}</Text>
-                    <Text style={styles.itemSub}>{isMuted ? 'Tap to unmute sound' : 'Sound playing normally'}</Text>
-                  </View>
-                  <View style={styles.checkedCircle}>
-                    {isMuted ? <VolumeMuteIcon color="#EF4444" size={16} /> : <VolumeIcon color="#4ADE80" size={16} />}
-                  </View>
-                </TVFocusable>
-
                 {!isEmbed && audioTracks.length > 0 && (
                   <>
-                    <Text style={[styles.sectionHeader, { marginTop: 16 }]}>AUDIO TRACKS</Text>
+
                     {audioTracks.map((track, i) => {
                       const isSelected = track.index === selectedAudioIndex;
                       return (
@@ -378,9 +417,7 @@ export function PlayerSettingsModal({
                           onPress={() => onSelectAudio(track.index)}>
                           <View style={styles.itemInfo}>
                             <Text style={styles.itemTitle}>{track.title || 'Track ' + (track.index + 1)}</Text>
-                            <Text style={styles.itemSub}>
-                              {track.language ? track.language.toUpperCase() : 'Default'}
-                            </Text>
+                            
                           </View>
                           {isSelected && (
                             <View style={styles.checkedCircle}>
@@ -434,8 +471,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   titleRow: {
     flexDirection: 'row',
@@ -464,27 +499,22 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
   tabBtn: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    gap: 5,
+    paddingVertical: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
   tabBtnActive: {
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderBottomColor: '#FFFFFF',
   },
   tabBtnFocused: {
-    borderColor: '#FFFFFF',
-    borderWidth: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   tabBtnText: {
     color: '#94A3B8',
@@ -518,31 +548,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 12,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
   },
   itemRowSelected: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderColor: 'rgba(255,255,255,0.18)',
   },
   itemRowFocused: {
-    borderColor: '#FFFFFF',
-    borderWidth: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
   itemInfo: {
     flex: 1,
   },
   itemTitle: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
-  },
-  itemSub: {
-    color: '#64748B',
-    fontSize: 11,
-    marginTop: 2,
   },
   checkedCircle: {
     width: 24,
@@ -560,13 +578,11 @@ const styles = StyleSheet.create({
   gridPill: {
     paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'transparent',
+    borderBottomWidth: 1,
+    borderColor: 'transparent',
   },
   gridPillActive: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
     borderColor: '#FFFFFF',
   },
   gridPillText: {
@@ -578,4 +594,33 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
+  qualityTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  qualityBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  qualityBadge4K: {
+    backgroundColor: '#9333EA',
+  },
+  qualityBadge1080: {
+    backgroundColor: '#E50914',
+  },
+  qualityBadgeStandard: {
+    backgroundColor: '#3B82F6',
+  },
+  qualityBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
 });
+
+
+

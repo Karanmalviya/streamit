@@ -19,7 +19,6 @@ import {
   TVEpisode,
   NetworkOrProvider,
   CastMember,
-  CrewMember,
   MediaExtendedDetails,
   fetchTVSeasons,
   fetchTVEpisodes,
@@ -38,10 +37,16 @@ import {
   VolumeMuteIcon,
   BackIcon,
   ShareIcon,
+  UpcomingIcon,
 } from '../components/common/Icons';
-import { BillboardFadedOverlay } from '../components/common/FadedOverlay';
+import {
+  BillboardFadedOverlay,
+  BillboardTopVignette,
+  BillboardSideOverlay,
+} from '../components/common/FadedOverlay';
 import { TVFocusable } from '../components/common/TVFocusable';
 import { useDeviceMode } from '../hooks/useDeviceMode';
+import { tvNavigation } from '../services/tvNavigation';
 
 export interface DetailScreenProps {
   media: MediaItem;
@@ -70,6 +75,39 @@ export function DetailScreen({
   // Active media displayed inside details page (updates when user taps related items)
   const [currentMedia, setCurrentMedia] = useState<MediaItem>(initialMedia);
 
+  // Focus refs for TV remote navigation
+  const backBtnRef = useRef<any>(null);
+  const watchNowBtnRef = useRef<any>(null);
+  const upcomingBtnRef = useRef<any>(null);
+  const watchlistBtnRef = useRef<any>(null);
+  const shareBtnRef = useRef<any>(null);
+  const muteBtnRef = useRef<any>(null);
+  const firstSeasonTabRef = useRef<any>(null);
+  const firstEpisodeCardRef = useRef<any>(null);
+  const firstRelatedCardRef = useRef<any>(null);
+  const portraitPlayBtnRef = useRef<any>(null);
+  const portraitUpcomingBtnRef = useRef<any>(null);
+  const portraitWatchlistBtnRef = useRef<any>(null);
+  const portraitShareBtnRef = useRef<any>(null);
+
+  // Section position tracking for programmatic smooth scrolling on TV focus
+  const sectionPositions = useRef({
+    header: 0,
+    seasons: 0,
+    episodes: 0,
+    related: 0,
+  });
+
+  // Hardware Back key handler for TV remote and mobile back button
+  useEffect(() => {
+    const handleBack = () => {
+      onBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
+    return () => sub.remove();
+  }, [onBack]);
+
   // Sync initialMedia from props
   useEffect(() => {
     setCurrentMedia(initialMedia);
@@ -77,6 +115,28 @@ export function DetailScreen({
 
   // Scroll ref to reset to top on media change
   const scrollRef = useRef<any>(null);
+
+  // Helper to scroll smoothly to a section on TV navigation
+  const scrollToSection = useCallback((section: 'header' | 'seasons' | 'episodes' | 'related') => {
+    if (!scrollRef.current) return;
+    const y = sectionPositions.current[section] || 0;
+    scrollRef.current.scrollTo({
+      y: Math.max(0, y - (section === 'episodes' ? 100 : 40)),
+      animated: true,
+    });
+  }, []);
+
+  // Helper to scroll to a specific episode card
+  const handleEpisodeFocus = useCallback((index: number) => {
+    if (!scrollRef.current) return;
+    const baseY = sectionPositions.current.episodes || sectionPositions.current.seasons || 300;
+    const rowHeight = 84;
+    const targetY = isWide ? baseY + Math.floor(index / 2) * rowHeight : baseY + index * rowHeight;
+    scrollRef.current.scrollTo({
+      y: Math.max(0, targetY - 120),
+      animated: true,
+    });
+  }, [isWide]);
 
   // Trailer & Media Assets State
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
@@ -94,9 +154,6 @@ export function DetailScreen({
 
   // Extended Details & Credits State
   const [cast, setCast] = useState<CastMember[]>([]);
-  const [directors, setDirectors] = useState<CrewMember[]>([]);
-  const [creators, setCreators] = useState<CrewMember[]>([]);
-  const [writers, setWriters] = useState<CrewMember[]>([]);
   const [extendedDetails, setExtendedDetails] = useState<MediaExtendedDetails | null>(null);
 
   // TV Seasons & Episodes
@@ -111,15 +168,16 @@ export function DetailScreen({
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
 
   // Full-bleed 16:9 banner with clean status bar clearance
+  const isLandscapeMode = isLandscape || isTV;
   const safeStatusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0;
   const effectiveTopInset = isTV ? 12 : Math.max(topInset || 0, safeStatusBarHeight, 32) + 6;
-  const bannerHeight = isWide
-    ? Math.round(Math.min(height * 0.58, 480))
+  const bannerHeight = isLandscapeMode
+    ? Math.round(Math.min(height * 0.82, 580))
     : Math.round(width * (9 / 16));
 
-  const imageTop = effectiveTopInset;
+  const imageTop = isLandscapeMode ? 0 : effectiveTopInset;
   const headerTotalHeight = bannerHeight + imageTop;
-  const fadeHeight = Math.round(bannerHeight * 0.75);
+  const fadeHeight = Math.round(bannerHeight * (isLandscapeMode ? 0.80 : 0.75));
 
   // Handle Android Hardware Back Button
   useEffect(() => {
@@ -184,9 +242,6 @@ export function DetailScreen({
       .then(cData => {
         if (isMounted) {
           setCast(cData.cast);
-          setDirectors(cData.directors);
-          setCreators(cData.creators);
-          setWriters(cData.writers);
         }
       })
       .catch(() => { });
@@ -224,7 +279,7 @@ export function DetailScreen({
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [currentMedia]);
+  }, [currentMedia, navAnim]);
 
   // Fetch Seasons for TV series / Anime
   useEffect(() => {
@@ -316,7 +371,7 @@ export function DetailScreen({
         title: `${title}${year}`,
         message: `Watch ${title}${year} on Streamit!\n${currentMedia.overview || ''}`.trim(),
       });
-    } catch (error) {
+    } catch {
       // Ignore cancellation
     }
   }, [currentMedia]);
@@ -348,6 +403,28 @@ export function DetailScreen({
     return currentMedia?.language || 'English';
   }, [extendedDetails?.spokenLanguages, currentMedia?.language]);
 
+  const isUpcoming = useMemo(() => {
+    if (extendedDetails?.isUpcoming !== undefined) {
+      return extendedDetails.isUpcoming;
+    }
+    const status = (extendedDetails?.status || '').toLowerCase();
+    if (['upcoming', 'in production', 'post production', 'planned', 'rumored'].includes(status)) {
+      return true;
+    }
+    if (extendedDetails?.rawReleaseDate) {
+      const releaseTime = new Date(extendedDetails.rawReleaseDate).getTime();
+      if (!isNaN(releaseTime) && releaseTime > Date.now()) {
+        return true;
+      }
+    }
+    const currentYear = new Date().getFullYear();
+    const mediaYear = parseInt(currentMedia.year, 10);
+    if (!isNaN(mediaYear) && mediaYear > currentYear) {
+      return true;
+    }
+    return false;
+  }, [extendedDetails?.isUpcoming, extendedDetails?.status, extendedDetails?.rawReleaseDate, currentMedia.year]);
+
   const hasTrailer = Boolean(trailerUrl);
 
   const stickyNavPaddingTop = isWide
@@ -355,6 +432,67 @@ export function DetailScreen({
     : Platform.OS === 'android'
       ? (StatusBar.currentHeight || 24) + 4
       : Math.max(topInset || 0, 16);
+
+  const handlePressUpToBackBtn = useCallback(() => {
+    scrollToSection('header');
+    backBtnRef.current?.focus?.();
+  }, [scrollToSection]);
+
+  const handlePressDownFromBackBtn = useCallback(() => {
+    if (isLandscapeMode) {
+      if (isUpcoming) {
+        upcomingBtnRef.current?.focus?.();
+      } else {
+        watchNowBtnRef.current?.focus?.();
+      }
+    } else {
+      if (isUpcoming) {
+        portraitUpcomingBtnRef.current?.focus?.();
+      } else {
+        portraitPlayBtnRef.current?.focus?.();
+      }
+    }
+  }, [isLandscapeMode, isUpcoming]);
+
+  const handlePressDownToBody = useCallback(() => {
+    if (currentMedia.type === 'tv') {
+      if (seasons.length > 0 && firstSeasonTabRef.current?.focus) {
+        scrollToSection('seasons');
+        firstSeasonTabRef.current.focus();
+        return;
+      }
+      if (episodes.length > 0 && firstEpisodeCardRef.current?.focus) {
+        scrollToSection('episodes');
+        firstEpisodeCardRef.current.focus();
+        return;
+      }
+    }
+    if (similarMedia.length > 0 && firstRelatedCardRef.current?.focus) {
+      scrollToSection('related');
+      firstRelatedCardRef.current.focus();
+      return;
+    }
+  }, [currentMedia.type, seasons.length, episodes.length, similarMedia.length, scrollToSection]);
+
+  // Initial focus on TV mount
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isLandscapeMode) {
+        if (isUpcoming) {
+          upcomingBtnRef.current?.focus?.();
+        } else {
+          watchNowBtnRef.current?.focus?.();
+        }
+      } else {
+        if (isUpcoming) {
+          portraitUpcomingBtnRef.current?.focus?.();
+        } else {
+          portraitPlayBtnRef.current?.focus?.();
+        }
+      }
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [currentMedia.id, isLandscapeMode, isUpcoming]);
 
   return (
     <View style={styles.screenRoot}>
@@ -379,9 +517,14 @@ export function DetailScreen({
 
         {/* Back Button: Stays in the exact same stationary position at all times */}
         <TVFocusable
+          ref={backBtnRef}
           style={styles.roundControlBtn}
-          focusedStyle={styles.btnFocused}
+          focusedStyle={styles.roundControlBtnFocused}
+          focusRingStyle={styles.roundControlBtnFocusRing}
+          borderRadius={20}
           hasTVPreferredFocus={false}
+          onPressLeft={() => tvNavigation.focusSidebar('home')}
+          onPressDown={handlePressDownFromBackBtn}
           onPress={onBack}>
           <BackIcon color="#FFFFFF" size={24} />
         </TVFocusable>
@@ -454,17 +597,171 @@ export function DetailScreen({
             </View>
           ) : null}
 
+          {/* Top Vignette (In Landscape / TV mode for clean contrast and status bar / back button visibility) */}
+          {isLandscapeMode && <BillboardTopVignette height={70} />}
+
+          {/* Left-to-Right Side Shadow Vignette (In Landscape / TV mode for high-contrast readable text) */}
+          {isLandscapeMode && <BillboardSideOverlay width={Math.min(width * 0.6, 560)} />}
+
           {/* Bottom Lossless GPU Gradient Fade */}
           <View style={styles.bottomOverlayWrap} pointerEvents="none">
             <BillboardFadedOverlay height={fadeHeight} />
           </View>
 
+          {/* LANDSCAPE BILLBOARD CONTENT OVERLAY (Inside banner, matching Homepage Billboard) */}
+          {isLandscapeMode && (
+            <View style={styles.billboardContent} pointerEvents="box-none">
+              {/* Title Logo Artwork or Bold Typography */}
+              {titleLogo && !failedLogo ? (
+                <Image
+                  source={{ uri: titleLogo }}
+                  style={styles.billboardTitleLogo}
+                  resizeMode="contain"
+                  onError={() => setFailedLogo(true)}
+                />
+              ) : (
+                <Text style={styles.billboardTitleText} numberOfLines={2}>
+                  {currentMedia.title}
+                </Text>
+              )}
+
+              {/* Metadata Badges Row: Year · U/A Certification · Runtime · Languages */}
+              <View style={styles.billboardMetaRow}>
+                {currentMedia.year && currentMedia.year !== 'N/A' && (
+                  <Text style={styles.billboardMetaYear}>{currentMedia.year}</Text>
+                )}
+                <View style={styles.billboardMetaDot} />
+                <View style={styles.billboardTagPill}>
+                  <Text style={styles.billboardTagPillText}>{displayCertification}</Text>
+                </View>
+                {displayRuntime ? (
+                  <>
+                    <View style={styles.billboardMetaDot} />
+                    <Text style={styles.billboardMetaRuntime}>{displayRuntime}</Text>
+                  </>
+                ) : null}
+                {displayLanguages ? (
+                  <>
+                    <View style={styles.billboardMetaDot} />
+                    <Text style={styles.billboardMetaLanguages} numberOfLines={1}>
+                      {displayLanguages}
+                    </Text>
+                  </>
+                ) : null}
+              </View>
+
+              {/* Action Buttons Row: Watch Now / Upcoming, Watchlist, Share */}
+              <View style={styles.billboardActionRow}>
+                {isUpcoming ? (
+                  <TVFocusable
+                    ref={upcomingBtnRef}
+                    style={styles.billboardUpcomingBtn}
+                    focusedStyle={styles.billboardUpcomingBtnFocused}
+                    focusRingStyle={styles.billboardUpcomingFocusRing}
+                    hasTVPreferredFocus={isLandscapeMode && isUpcoming}
+                    borderRadius={8}
+                    onPressLeft={() => tvNavigation.focusSidebar('home')}
+                    onPressRight={() => watchlistBtnRef.current?.focus?.()}
+                    onPressUp={handlePressUpToBackBtn}
+                    onPressDown={handlePressDownToBody}
+                    onPress={() => onToggleWatchlist(currentMedia)}>
+                    <UpcomingIcon color="#F59E0B" size={16} />
+                    <Text style={styles.billboardUpcomingText}>
+                      {extendedDetails?.releaseDateFormatted ? `Upcoming • ${extendedDetails.releaseDateFormatted}` : 'Upcoming'}
+                    </Text>
+                  </TVFocusable>
+                ) : (
+                  <TVFocusable
+                    ref={watchNowBtnRef}
+                    style={styles.billboardWatchNowBtn}
+                    focusedStyle={styles.billboardWatchNowBtnFocused}
+                    focusRingStyle={styles.billboardWatchNowFocusRing}
+                    hasTVPreferredFocus={isLandscapeMode && !isUpcoming}
+                    borderRadius={8}
+                    onPressLeft={() => tvNavigation.focusSidebar('home')}
+                    onPressRight={() => watchlistBtnRef.current?.focus?.()}
+                    onPressUp={handlePressUpToBackBtn}
+                    onPressDown={handlePressDownToBody}
+                    onPress={() => {
+                      if (onPlay) {
+                        onPlay(currentMedia, selectedSeason, 1);
+                      }
+                    }}>
+                    <PlayIcon color="#000000" size={16} />
+                    <Text style={styles.billboardWatchNowText}>
+                      {currentMedia.type === 'tv' ? `Play S${selectedSeason} E1` : 'Watch Now'}
+                    </Text>
+                  </TVFocusable>
+                )}
+
+                <TVFocusable
+                  ref={watchlistBtnRef}
+                  style={[
+                    styles.billboardActionPillBtn,
+                    isInWatchlist && styles.billboardActionPillBtnActive,
+                  ]}
+                  focusedStyle={styles.billboardActionPillBtnFocused}
+                  focusRingStyle={styles.pillFocusRing}
+                  borderRadius={8}
+                  onPressLeft={() => {
+                    if (isUpcoming) {
+                      upcomingBtnRef.current?.focus?.();
+                    } else {
+                      watchNowBtnRef.current?.focus?.();
+                    }
+                  }}
+                  onPressRight={() => shareBtnRef.current?.focus?.()}
+                  onPressUp={handlePressUpToBackBtn}
+                  onPressDown={handlePressDownToBody}
+                  onPress={() => onToggleWatchlist(currentMedia)}>
+                  {isInWatchlist ? (
+                    <CheckIcon color="#4ADE80" size={16} />
+                  ) : (
+                    <PlusIcon color="#FFFFFF" size={16} />
+                  )}
+                  <Text
+                    style={[
+                      styles.billboardActionPillText,
+                      isInWatchlist && styles.billboardActionPillTextActive,
+                    ]}>
+                    {isInWatchlist ? 'In Watchlist' : 'Watchlist'}
+                  </Text>
+                </TVFocusable>
+
+                <TVFocusable
+                  ref={shareBtnRef}
+                  style={styles.billboardActionPillBtn}
+                  focusedStyle={styles.billboardActionPillBtnFocused}
+                  focusRingStyle={styles.pillFocusRing}
+                  borderRadius={8}
+                  onPressLeft={() => watchlistBtnRef.current?.focus?.()}
+                  onPressRight={() => {
+                    if (hasTrailer && showTrailer && muteBtnRef.current?.focus) {
+                      muteBtnRef.current.focus();
+                    }
+                  }}
+                  onPressUp={handlePressUpToBackBtn}
+                  onPressDown={handlePressDownToBody}
+                  onPress={handleShare}>
+                  <ShareIcon color="#FFFFFF" size={16} />
+                  <Text style={styles.billboardActionPillText}>Share</Text>
+                </TVFocusable>
+              </View>
+            </View>
+          )}
+
           {/* Bottom Right Volume Mute / Unmute Button */}
           {hasTrailer && showTrailer ? (
-            <View style={[styles.bannerMuteWrap, isWide && styles.bannerMuteWrapWide]}>
+            <View style={[styles.bannerMuteWrap, isLandscapeMode && styles.bannerMuteWrapLandscape]}>
               <TVFocusable
+                ref={muteBtnRef}
                 style={styles.bannerMuteBtn}
                 focusedStyle={styles.bannerMuteBtnFocused}
+                focusRingStyle={styles.muteBtnFocusRing}
+                borderRadius={6}
+                onPressLeft={() => shareBtnRef.current?.focus?.()}
+                onPressUp={handlePressUpToBackBtn}
+                onPressDown={handlePressDownToBody}
                 onPress={toggleMute}>
                 {isMuted ? (
                   <VolumeMuteIcon color="#FFFFFF" size={22} />
@@ -477,63 +774,91 @@ export function DetailScreen({
         </View>
 
         {/* 2. BODY CONTENT SECTION */}
-        <View style={[styles.bodyContent, isWide && styles.bodyContentWide]}>
-          {/* Title / Movie or Series Image Artwork (Centered Cleanly Below Backdrop) */}
-          <View style={styles.titleLogoWrap}>
-            {titleLogo && !failedLogo ? (
-              <Image
-                source={{ uri: titleLogo }}
-                style={[styles.titleLogoImg, isWide && styles.titleLogoImgWide]}
-                resizeMode="contain"
-                onError={() => setFailedLogo(true)}
-              />
-            ) : (
-              <Text style={[styles.titleTextHeading, isWide && styles.titleTextHeadingWide]} numberOfLines={2}>
-                {currentMedia.title}
-              </Text>
-            )}
-          </View>
+        <View style={[styles.bodyContent, isLandscapeMode ? styles.bodyContentLandscape : (isWide && styles.bodyContentWide)]}>
+          {/* Portrait-Only Header Content (Title, Metadata, and Play Action Button) */}
+          {!isLandscapeMode && (
+            <>
+              {/* Title / Movie or Series Image Artwork (Centered Cleanly Below Backdrop) */}
+              <View style={styles.titleLogoWrap}>
+                {titleLogo && !failedLogo ? (
+                  <Image
+                    source={{ uri: titleLogo }}
+                    style={[styles.titleLogoImg, isWide && styles.titleLogoImgWide]}
+                    resizeMode="contain"
+                    onError={() => setFailedLogo(true)}
+                  />
+                ) : (
+                  <Text style={[styles.titleTextHeading, isWide && styles.titleTextHeadingWide]} numberOfLines={2}>
+                    {currentMedia.title}
+                  </Text>
+                )}
+              </View>
 
-          {/* Meta Tags Row: Year, U/A 18+ Certification, Duration, Languages, Quality */}
-          <View style={styles.metaRow}>
-            <Text style={styles.metaYear}>{currentMedia.year}</Text>
-            <View style={styles.metaDot} />
-            <View style={styles.tagPill}>
-              <Text style={styles.tagPillText}>{displayCertification}</Text>
-            </View>
-            {displayRuntime ? (
-              <>
+              {/* Meta Tags Row: Year, U/A 18+ Certification, Duration, Languages, Quality */}
+              <View style={styles.metaRow}>
+                <Text style={styles.metaYear}>{currentMedia.year}</Text>
                 <View style={styles.metaDot} />
-                <Text style={styles.metaRuntime}>{displayRuntime}</Text>
-              </>
-            ) : null}
-            {displayLanguages ? (
-              <>
-                <View style={styles.metaDot} />
-                <Text style={styles.metaLanguages} numberOfLines={1}>
-                  {displayLanguages}
-                </Text>
-              </>
-            ) : null}
-          </View>
+                <View style={styles.tagPill}>
+                  <Text style={styles.tagPillText}>{displayCertification}</Text>
+                </View>
+                {displayRuntime ? (
+                  <>
+                    <View style={styles.metaDot} />
+                    <Text style={styles.metaRuntime}>{displayRuntime}</Text>
+                  </>
+                ) : null}
+                {displayLanguages ? (
+                  <>
+                    <View style={styles.metaDot} />
+                    <Text style={styles.metaLanguages} numberOfLines={1}>
+                      {displayLanguages}
+                    </Text>
+                  </>
+                ) : null}
+              </View>
 
-          {/* Action Buttons Row: Full Width Watch Now / Play */}
-          <View style={styles.actionRow}>
-            <TVFocusable
-              style={styles.primaryPlayBtnFull}
-              focusedStyle={styles.btnFocused}
-              hasTVPreferredFocus={true}
-              onPress={() => {
-                if (onPlay) {
-                  onPlay(currentMedia, selectedSeason, 1);
-                }
-              }}>
-              <PlayIcon color="#000000" size={18} />
-              <Text style={styles.primaryPlayText}>
-                {currentMedia.type === 'tv' ? `Play S${selectedSeason} E1` : 'Watch Now'}
-              </Text>
-            </TVFocusable>
-          </View>
+              {/* Action Buttons Row: Full Width Watch Now / Upcoming */}
+              <View style={styles.actionRow}>
+                {isUpcoming ? (
+                  <TVFocusable
+                    ref={portraitUpcomingBtnRef}
+                    style={styles.primaryUpcomingBtnFull}
+                    focusedStyle={styles.primaryUpcomingBtnFullFocused}
+                    focusRingStyle={styles.billboardUpcomingFocusRing}
+                    hasTVPreferredFocus={!isLandscapeMode && isUpcoming}
+                    borderRadius={8}
+                    onPressUp={handlePressUpToBackBtn}
+                    onPressDown={() => portraitWatchlistBtnRef.current?.focus?.()}
+                    onPress={() => onToggleWatchlist(currentMedia)}>
+                    <UpcomingIcon color="#F59E0B" size={18} />
+                    <Text style={styles.primaryUpcomingText}>
+                      {extendedDetails?.releaseDateFormatted ? `Upcoming (${extendedDetails.releaseDateFormatted})` : 'Upcoming'}
+                    </Text>
+                  </TVFocusable>
+                ) : (
+                  <TVFocusable
+                    ref={portraitPlayBtnRef}
+                    style={styles.primaryPlayBtnFull}
+                    focusedStyle={styles.primaryPlayBtnFullFocused}
+                    focusRingStyle={styles.billboardWatchNowFocusRing}
+                    hasTVPreferredFocus={!isLandscapeMode && !isUpcoming}
+                    borderRadius={8}
+                    onPressUp={handlePressUpToBackBtn}
+                    onPressDown={() => portraitWatchlistBtnRef.current?.focus?.()}
+                    onPress={() => {
+                      if (onPlay) {
+                        onPlay(currentMedia, selectedSeason, 1);
+                      }
+                    }}>
+                    <PlayIcon color="#000000" size={18} />
+                    <Text style={styles.primaryPlayText}>
+                      {currentMedia.type === 'tv' ? `Play S${selectedSeason} E1` : 'Watch Now'}
+                    </Text>
+                  </TVFocusable>
+                )}
+              </View>
+            </>
+          )}
 
           {/* Storyline / Overview with Genres as heading separated by pipe */}
           <View style={styles.sectionBlock}>
@@ -547,37 +872,63 @@ export function DetailScreen({
             </Text>
           </View>
 
-          {/* Below Storyline Actions: Watchlist & Share */}
-          <View style={styles.secondaryActionsRow}>
-            <TVFocusable
-              style={[
-                styles.actionPillBtn,
-                isInWatchlist && styles.actionPillBtnActive,
-              ]}
-              focusedStyle={styles.btnFocused}
-              onPress={() => onToggleWatchlist(currentMedia)}>
-              {isInWatchlist ? (
-                <CheckIcon color="#4ADE80" size={18} />
-              ) : (
-                <PlusIcon color="#FFFFFF" size={18} />
-              )}
-              <Text
+          {/* Portrait-Only Below Storyline Actions: Watchlist & Share */}
+          {!isLandscapeMode && (
+            <View style={styles.secondaryActionsRow}>
+              <TVFocusable
+                ref={portraitWatchlistBtnRef}
                 style={[
-                  styles.actionPillText,
-                  isInWatchlist && styles.actionPillTextActive,
-                ]}>
-                {isInWatchlist ? 'In Watchlist' : 'Watchlist'}
-              </Text>
-            </TVFocusable>
+                  styles.actionPillBtn,
+                  isInWatchlist && styles.actionPillBtnActive,
+                ]}
+                focusedStyle={styles.actionPillBtnFocused}
+                focusRingStyle={styles.pillFocusRing}
+                borderRadius={8}
+                onPressUp={() => {
+                  if (isUpcoming) {
+                    portraitUpcomingBtnRef.current?.focus?.();
+                  } else {
+                    portraitPlayBtnRef.current?.focus?.();
+                  }
+                }}
+                onPressRight={() => portraitShareBtnRef.current?.focus?.()}
+                onPressDown={handlePressDownToBody}
+                onPress={() => onToggleWatchlist(currentMedia)}>
+                {isInWatchlist ? (
+                  <CheckIcon color="#4ADE80" size={18} />
+                ) : (
+                  <PlusIcon color="#FFFFFF" size={18} />
+                )}
+                <Text
+                  style={[
+                    styles.actionPillText,
+                    isInWatchlist && styles.actionPillTextActive,
+                  ]}>
+                  {isInWatchlist ? 'In Watchlist' : 'Watchlist'}
+                </Text>
+              </TVFocusable>
 
-            <TVFocusable
-              style={styles.actionPillBtn}
-              focusedStyle={styles.btnFocused}
-              onPress={handleShare}>
-              <ShareIcon color="#FFFFFF" size={18} />
-              <Text style={styles.actionPillText}>Share</Text>
-            </TVFocusable>
-          </View>
+              <TVFocusable
+                ref={portraitShareBtnRef}
+                style={styles.actionPillBtn}
+                focusedStyle={styles.actionPillBtnFocused}
+                focusRingStyle={styles.pillFocusRing}
+                borderRadius={8}
+                onPressLeft={() => portraitWatchlistBtnRef.current?.focus?.()}
+                onPressUp={() => {
+                  if (isUpcoming) {
+                    portraitUpcomingBtnRef.current?.focus?.();
+                  } else {
+                    portraitPlayBtnRef.current?.focus?.();
+                  }
+                }}
+                onPressDown={handlePressDownToBody}
+                onPress={handleShare}>
+                <ShareIcon color="#FFFFFF" size={18} />
+                <Text style={styles.actionPillText}>Share</Text>
+              </TVFocusable>
+            </View>
+          )}
 
           {/* Content Advisory: Sleek Modern Inline Bar */}
           {extendedDetails?.contentAdvisories && extendedDetails.contentAdvisories.length > 0 && (
@@ -658,7 +1009,11 @@ export function DetailScreen({
 
           {/* 3. TV SERIES: SEASONS & EPISODES PICKER */}
           {currentMedia.type === 'tv' && (
-            <View style={styles.sectionBlock}>
+            <View
+              style={styles.sectionBlock}
+              onLayout={e => {
+                sectionPositions.current.seasons = e.nativeEvent.layout.y;
+              }}>
               <Text style={styles.sectionHeading}>SEASONS & EPISODES</Text>
 
               {loadingSeasons ? (
@@ -668,13 +1023,38 @@ export function DetailScreen({
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.seasonScroll}>
-                  {seasons.map(s => {
+                  {seasons.map((s, idx) => {
                     const isActive = s.seasonNumber === selectedSeason;
                     return (
                       <TVFocusable
                         key={s.id}
+                        ref={idx === 0 ? firstSeasonTabRef : undefined}
                         style={[styles.seasonTab, isActive && styles.seasonTabActive]}
-                        focusedStyle={styles.btnFocused}
+                        focusedStyle={isActive ? styles.seasonTabActiveFocused : styles.seasonTabFocused}
+                        focusRingStyle={isActive ? styles.seasonTabActiveFocusRing : styles.seasonTabFocusRing}
+                        borderRadius={6}
+                        onFocus={() => scrollToSection('seasons')}
+                        onPressLeft={idx === 0 ? () => tvNavigation.focusSidebar('home') : undefined}
+                        onPressUp={() => {
+                          scrollToSection('header');
+                          if (isLandscapeMode) {
+                            if (isUpcoming) {
+                              upcomingBtnRef.current?.focus?.();
+                            } else {
+                              watchNowBtnRef.current?.focus?.();
+                            }
+                          } else {
+                            if (isUpcoming) {
+                              portraitUpcomingBtnRef.current?.focus?.();
+                            } else {
+                              portraitPlayBtnRef.current?.focus?.();
+                            }
+                          }
+                        }}
+                        onPressDown={() => {
+                          scrollToSection('episodes');
+                          firstEpisodeCardRef.current?.focus?.();
+                        }}
                         onPress={() => setSelectedSeason(s.seasonNumber)}>
                         <Text
                           style={[
@@ -699,12 +1079,38 @@ export function DetailScreen({
               {loadingEpisodes ? (
                 <ActivityIndicator size="small" color="#FFFFFF" style={styles.indicatorMargin} />
               ) : (
-                <View style={[styles.episodeList, isWide && styles.episodeListWide]}>
-                  {episodes.map(ep => (
+                <View
+                  style={[styles.episodeList, isWide && styles.episodeListWide]}
+                  onLayout={e => {
+                    sectionPositions.current.episodes =
+                      sectionPositions.current.seasons + e.nativeEvent.layout.y;
+                  }}>
+                  {episodes.map((ep, epIdx) => (
                     <TVFocusable
                       key={ep.id}
+                      ref={epIdx === 0 ? firstEpisodeCardRef : undefined}
                       style={[styles.episodeCard, isWide && styles.episodeCardWide]}
-                      focusedStyle={styles.cardFocused}
+                      focusedStyle={styles.episodeCardFocused}
+                      focusRingStyle={styles.episodeCardFocusRing}
+                      borderRadius={8}
+                      onFocus={() => handleEpisodeFocus(epIdx)}
+                      onPressLeft={epIdx % (isWide ? 2 : 1) === 0 ? () => tvNavigation.focusSidebar('home') : undefined}
+                      onPressUp={
+                        epIdx === 0 || (isWide && epIdx === 1)
+                          ? () => {
+                              scrollToSection('seasons');
+                              firstSeasonTabRef.current?.focus?.();
+                            }
+                          : undefined
+                      }
+                      onPressDown={
+                        epIdx === episodes.length - 1 || (isWide && epIdx === episodes.length - 2)
+                          ? () => {
+                              scrollToSection('related');
+                              firstRelatedCardRef.current?.focus?.();
+                            }
+                          : undefined
+                      }
                       onPress={() => {
                         if (onPlay) {
                           onPlay(currentMedia, selectedSeason, ep.episodeNumber);
@@ -750,7 +1156,11 @@ export function DetailScreen({
           )}
 
           {/* 4. RELATED CONTENT / MORE LIKE THIS RAIL */}
-          <View style={styles.sectionBlock}>
+          <View
+            style={styles.sectionBlock}
+            onLayout={e => {
+              sectionPositions.current.related = e.nativeEvent.layout.y;
+            }}>
             <Text style={styles.sectionHeading}>MORE LIKE THIS</Text>
 
             {loadingSimilar ? (
@@ -760,11 +1170,37 @@ export function DetailScreen({
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.relatedScroll}>
-                {similarMedia.map(item => (
+                {similarMedia.map((item, relIdx) => (
                   <TVFocusable
                     key={item.id}
+                    ref={relIdx === 0 ? firstRelatedCardRef : undefined}
                     style={styles.relatedCard}
-                    focusedStyle={styles.cardFocused}
+                    focusedStyle={styles.relatedCardFocused}
+                    focusRingStyle={styles.relatedCardFocusRing}
+                    borderRadius={6}
+                    onFocus={() => scrollToSection('related')}
+                    onPressLeft={relIdx === 0 ? () => tvNavigation.focusSidebar('home') : undefined}
+                    onPressUp={() => {
+                      if (currentMedia.type === 'tv' && episodes.length > 0) {
+                        scrollToSection('episodes');
+                        firstEpisodeCardRef.current?.focus?.();
+                      } else {
+                        scrollToSection('header');
+                        if (isLandscapeMode) {
+                          if (isUpcoming) {
+                            upcomingBtnRef.current?.focus?.();
+                          } else {
+                            watchNowBtnRef.current?.focus?.();
+                          }
+                        } else {
+                          if (isUpcoming) {
+                            portraitUpcomingBtnRef.current?.focus?.();
+                          } else {
+                            portraitPlayBtnRef.current?.focus?.();
+                          }
+                        }
+                      }
+                    }}
                     onPress={() => handleSelectRelated(item)}>
                     <Image
                       source={{ uri: item.poster || item.backdrop || undefined }}
@@ -921,6 +1357,10 @@ const styles = StyleSheet.create({
     right: 28,
     bottom: 48,
   },
+  bannerMuteWrapLandscape: {
+    right: 32,
+    bottom: 30,
+  },
   bannerMuteBtn: {
     padding: 6,
     justifyContent: 'center',
@@ -932,6 +1372,136 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
     transform: [{ scale: 1.15 }],
     borderRadius: 6,
+  },
+  billboardContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 32,
+    paddingBottom: 28,
+    maxWidth: 720,
+    justifyContent: 'flex-end',
+    pointerEvents: 'box-none',
+    zIndex: 10,
+  },
+  billboardTitleLogo: {
+    width: 280,
+    height: 72,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+  },
+  billboardTitleText: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+    marginBottom: 8,
+    textAlign: 'left',
+  },
+  billboardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 14,
+  },
+  billboardMetaYear: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginRight: 2,
+  },
+  billboardMetaDot: {
+    width: 3.5,
+    height: 3.5,
+    borderRadius: 2,
+    backgroundColor: '#64748B',
+    marginHorizontal: 1,
+  },
+  billboardTagPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  billboardTagPillText: {
+    color: '#CBD0DF',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  billboardMetaRuntime: {
+    color: '#A0AEC0',
+    fontSize: 12,
+    fontWeight: '600',
+    marginRight: 2,
+  },
+  billboardMetaLanguages: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  billboardActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  billboardWatchNowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    gap: 8,
+  },
+  billboardWatchNowText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  billboardUpcomingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    gap: 8,
+  },
+  billboardUpcomingText: {
+    color: '#FCD34D',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  billboardActionPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0D0F16',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#191D2A',
+  },
+  billboardActionPillBtnActive: {
+    borderColor: '#4ADE80',
+    backgroundColor: 'rgba(74, 222, 128, 0.08)',
+  },
+  billboardActionPillText: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  billboardActionPillTextActive: {
+    color: '#4ADE80',
   },
   titleLogoWrap: {
     alignItems: 'center',
@@ -973,6 +1543,14 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: 24,
     marginTop: -30,
+    backgroundColor: '#040406',
+  },
+  bodyContentLandscape: {
+    width: '100%',
+    maxWidth: '100%',
+    paddingHorizontal: 32,
+    paddingTop: 8,
+    marginTop: 0,
     backgroundColor: '#040406',
   },
   metaRow: {
@@ -1044,14 +1622,31 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
     marginBottom: 16,
   },
   primaryPlayBtnFull: {
+    flex: 1,
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
+    paddingVertical: 13,
+    borderRadius: 8,
+    gap: 8,
+  },
+  primaryUpcomingBtnFull: {
+    flex: 1,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
     paddingVertical: 13,
     borderRadius: 8,
     gap: 8,
@@ -1070,6 +1665,12 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 14,
     fontWeight: '900',
+  },
+  primaryUpcomingText: {
+    color: '#FCD34D',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0.3,
   },
   secondaryActionsRow: {
     flexDirection: 'row',
@@ -1291,7 +1892,6 @@ const styles = StyleSheet.create({
   networkLogoImg: {
     width: 68,
     height: 20,
-    tintColor: '#FFFFFF',
   },
   networkBadgeText: {
     color: '#FFFFFF',
@@ -1509,15 +2109,111 @@ const styles = StyleSheet.create({
   indicatorMargin: {
     marginVertical: 14,
   },
-  btnFocused: {
+  roundControlBtnFocused: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 20,
+    transform: [{ scale: 1.15 }],
+  },
+  roundControlBtnFocusRing: {
     borderColor: '#FFFFFF',
-    borderWidth: 2,
+    borderWidth: 2.5,
+    borderRadius: 20,
+  },
+  billboardWatchNowBtnFocused: {
+    backgroundColor: '#FFFFFF',
+    transform: [{ scale: 1.06 }],
+  },
+  billboardWatchNowFocusRing: {
+    borderColor: '#F59E0B',
+    borderWidth: 3.5,
+    borderRadius: 8,
+  },
+  billboardUpcomingBtnFocused: {
+    backgroundColor: 'rgba(245, 158, 11, 0.35)',
+    transform: [{ scale: 1.06 }],
+  },
+  billboardUpcomingFocusRing: {
+    borderColor: '#F59E0B',
+    borderWidth: 3.5,
+    borderRadius: 8,
+  },
+  billboardActionPillBtnFocused: {
+    backgroundColor: '#1E2436',
+    borderColor: '#FFFFFF',
+    borderWidth: 1.5,
     transform: [{ scale: 1.05 }],
   },
-  cardFocused: {
+  pillFocusRing: {
     borderColor: '#FFFFFF',
-    borderWidth: 2,
+    borderWidth: 2.5,
+    borderRadius: 8,
+  },
+  muteBtnFocusRing: {
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    borderRadius: 6,
+  },
+  primaryPlayBtnFullFocused: {
+    backgroundColor: '#FFFFFF',
+    transform: [{ scale: 1.04 }],
+  },
+  primaryUpcomingBtnFullFocused: {
+    backgroundColor: 'rgba(245, 158, 11, 0.35)',
+    transform: [{ scale: 1.04 }],
+  },
+  actionPillBtnFocused: {
+    backgroundColor: '#1E2436',
+    borderColor: '#FFFFFF',
+    borderWidth: 1.5,
+    transform: [{ scale: 1.04 }],
+  },
+  seasonTabFocused: {
+    backgroundColor: '#171E2D',
+    borderColor: '#38BDF8',
+    borderWidth: 1.5,
+    transform: [{ scale: 1.05 }],
+  },
+  seasonTabFocusRing: {
+    borderColor: '#38BDF8',
+    borderWidth: 2.5,
+    borderRadius: 6,
+  },
+  seasonTabActiveFocused: {
+    backgroundColor: '#FFFFFF',
+    transform: [{ scale: 1.08 }],
+  },
+  seasonTabActiveFocusRing: {
+    borderColor: '#F59E0B',
+    borderWidth: 3.5,
+    borderRadius: 6,
+  },
+  episodeCardFocused: {
+    backgroundColor: '#131A28',
+    borderColor: '#38BDF8',
+    borderWidth: 1.5,
+    transform: [{ scale: 1.025 }],
+    zIndex: 10,
+  },
+  episodeCardFocusRing: {
+    borderColor: '#38BDF8',
+    borderWidth: 2.5,
+    borderRadius: 8,
+  },
+  relatedCardFocused: {
+    transform: [{ scale: 1.08 }],
+    zIndex: 20,
+  },
+  relatedCardFocusRing: {
+    borderColor: '#FFFFFF',
+    borderWidth: 3,
+    borderRadius: 6,
+    height: 160,
+  },
+  btnFocused: {
+    zIndex: 10,
+  },
+  cardFocused: {
+    zIndex: 10,
     backgroundColor: '#161924',
-    transform: [{ scale: 1.03 }],
   },
 });

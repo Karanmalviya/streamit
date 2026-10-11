@@ -1,4 +1,4 @@
-import React, { useState, memo, useCallback } from 'react';
+import React, { useState, useRef, memo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,12 @@ import {
   Image,
   StyleSheet,
   Platform,
+  Pressable,
 } from 'react-native';
 import { TVFocusable } from '../common/TVFocusable';
+import { TVFixedFocusShelf } from '../common/TVFixedFocusShelf';
 import { useDeviceMode } from '../../hooks/useDeviceMode';
+import { tvNavigation } from '../../services/tvNavigation';
 
 export interface GenreItem {
   id: number;
@@ -180,30 +183,20 @@ export const POPULAR_GENRES: GenreItem[] = [
 interface GenreRailProps {
   onSelectGenre: (genre: GenreItem) => void;
   onViewAll?: () => void;
+  onFocus?: () => void;
 }
 
-interface GenreCardItemProps {
-  genre: GenreItem;
-  isTV: boolean;
-  onSelect: (genre: GenreItem) => void;
-}
-
-const GenreCardItem = memo(function GenreCardItem({
+const GenreInner = memo(function GenreInnerComponent({
   genre,
   isTV,
-  onSelect,
-}: GenreCardItemProps) {
+}: {
+  genre: GenreItem;
+  isTV: boolean;
+}) {
   const [imgError, setImgError] = useState(false);
 
-  const handlePress = useCallback(() => {
-    onSelect(genre);
-  }, [genre, onSelect]);
-
   return (
-    <TVFocusable
-      style={[styles.card, isTV && styles.cardTV]}
-      focusedStyle={styles.cardFocused}
-      onPress={handlePress}>
+    <View style={[styles.card, isTV && styles.cardTV]}>
       <View style={[styles.cardInner, { backgroundColor: genre.color }]}>
         {!imgError && genre.imageUrl ? (
           <Image
@@ -218,25 +211,69 @@ const GenreCardItem = memo(function GenreCardItem({
           </View>
         )}
       </View>
-    </TVFocusable>
+    </View>
+  );
+});
+
+interface GenreCardItemProps {
+  genre: GenreItem;
+  index: number;
+  isTV: boolean;
+  onSelect: (genre: GenreItem) => void;
+  onCardFocus?: (index: number) => void;
+}
+
+const GenreCardItem = memo(function GenreCardItem({
+  genre,
+  isTV,
+  onSelect,
+}: GenreCardItemProps) {
+  const handlePress = useCallback(() => {
+    onSelect(genre);
+  }, [genre, onSelect]);
+
+  return (
+    <Pressable onPress={handlePress}>
+      <GenreInner genre={genre} isTV={isTV} />
+    </Pressable>
   );
 });
 
 export const GenreRail = memo(function GenreRail({
   onSelectGenre,
   onViewAll,
+  onFocus,
 }: GenreRailProps) {
   const { isTV } = useDeviceMode();
+  const flatListRef = React.useRef<FlatList>(null);
+
+  const handleCardFocus = useCallback(
+    (index: number) => {
+      if (onFocus) onFocus();
+      try {
+        flatListRef.current?.scrollToIndex({
+          index,
+          viewPosition: 0.2,
+          animated: true,
+        });
+      } catch {
+        // ignore out of bounds
+      }
+    },
+    [onFocus]
+  );
 
   const renderItem = useCallback(
-    ({ item }: { item: GenreItem }) => (
+    ({ item, index }: { item: GenreItem; index: number }) => (
       <GenreCardItem
         genre={item}
+        index={index}
         isTV={isTV}
         onSelect={onSelectGenre}
+        onCardFocus={handleCardFocus}
       />
     ),
-    [isTV, onSelectGenre]
+    [isTV, onSelectGenre, handleCardFocus]
   );
 
   const keyExtractor = useCallback(
@@ -262,25 +299,55 @@ export const GenreRail = memo(function GenreRail({
           <TVFocusable
             style={styles.viewAllBtn}
             focusedStyle={styles.viewAllBtnFocused}
+            borderRadius={6}
+            disabled={isTV}
+            onFocus={onFocus}
             onPress={onViewAll}>
             <Text style={styles.viewAllText}>View All &gt;</Text>
           </TVFocusable>
         )}
       </View>
 
-      <FlatList
-        horizontal
-        data={POPULAR_GENRES}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, isTV && styles.scrollTV]}
-        initialNumToRender={5}
-        maxToRenderPerBatch={4}
-        windowSize={3}
-        removeClippedSubviews={Platform.OS === 'android'}
-      />
+      {isTV ? (
+        <TVFixedFocusShelf
+          data={POPULAR_GENRES}
+          itemWidth={216 + 16}
+          cardWidth={216}
+          cardHeight={116}
+          borderRadius={14}
+          anchorLeft={28}
+          anchorTop={16}
+          paddingLeft={28}
+          paddingTop={16}
+          paddingBottom={18}
+          railId="genres"
+          onSelect={onSelectGenre}
+          onFocus={onFocus}
+          onPressLeftAtStart={() => tvNavigation.focusSidebar('home')}
+          renderItem={(genre, index) => (
+            <GenreInner
+              key={`tv-genre-${genre.id}-${index}`}
+              genre={genre}
+              isTV={true}
+            />
+          )}
+        />
+      ) : (
+        <FlatList
+          ref={flatListRef}
+          horizontal
+          data={POPULAR_GENRES}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          getItemLayout={getItemLayout}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[styles.scroll, isTV && styles.scrollTV]}
+          initialNumToRender={5}
+          maxToRenderPerBatch={4}
+          windowSize={3}
+          removeClippedSubviews={Platform.OS === 'android'}
+        />
+      )}
     </View>
   );
 });
@@ -311,8 +378,7 @@ const styles = StyleSheet.create({
   },
   viewAllBtnFocused: {
     backgroundColor: '#FFFFFF',
-    transform: [{ scale: 1.08 }],
-  },
+    },
   viewAllText: {
     color: '#94A3B8',
     fontSize: 13,
@@ -320,16 +386,17 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   scrollTV: {
     paddingHorizontal: 28,
+    paddingVertical: 16,
   },
   card: {
     width: 172,
     height: 96,
     borderRadius: 12,
     overflow: 'hidden',
-    borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.05)',
     backgroundColor: '#07080D',
     marginRight: 12,
@@ -368,13 +435,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   cardFocused: {
-    borderColor: '#FFFFFF',
-    borderWidth: 2.5,
-    transform: [{ scale: 1.06 }],
-    elevation: 12,
-    shadowColor: '#FFFFFF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-  },
+    },
 });

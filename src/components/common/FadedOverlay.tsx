@@ -64,8 +64,43 @@ export const BillboardSideOverlay = memo(function BillboardSideOverlayComp({ wid
   );
 });
 
+export const CardBottomFade = memo(function CardBottomFadeComp({
+  height = '100%',
+}: {
+  height?: number | string;
+}) {
+  return (
+    <View
+      style={[
+        styles.cardFadeContainer,
+        typeof height === 'number' ? { height } : StyleSheet.absoluteFill,
+      ]}
+      pointerEvents="none">
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <LinearGradient id="cardBottomFadeGrad" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor="#000000" stopOpacity="0" />
+            <Stop offset="25%" stopColor="#000000" stopOpacity="0.1" />
+            <Stop offset="55%" stopColor="#000000" stopOpacity="0.65" />
+            <Stop offset="85%" stopColor="#000000" stopOpacity="0.92" />
+            <Stop offset="100%" stopColor="#000000" stopOpacity="0.98" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#cardBottomFadeGrad)" />
+      </Svg>
+    </View>
+  );
+});
+
 const styles = StyleSheet.create({
   container: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
+  cardFadeContainer: {
     position: 'absolute',
     left: 0,
     right: 0,

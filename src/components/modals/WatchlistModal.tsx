@@ -72,6 +72,10 @@ export function WatchlistModal({
               numColumns={gridColumns}
               contentContainerStyle={styles.gridContent}
               columnWrapperStyle={styles.gridRow}
+              initialNumToRender={15}
+              maxToRenderPerBatch={12}
+              windowSize={5}
+              removeClippedSubviews={false}
               renderItem={({ item }) => (
                 <TVFocusable
                   style={[styles.gridCard, { width: cardWidth, height: cardHeight }]}
@@ -182,9 +186,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#07080B',
   },
   cardFocused: {
-    borderColor: '#FFFFFF',
-    borderWidth: 2.5,
-    transform: [{ scale: 1.05 }],
     zIndex: 10,
   },
   gridPosterImg: {

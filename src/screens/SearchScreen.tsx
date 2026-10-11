@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import { SearchIcon } from '../components/common/Icons';
 import { PosterGrid } from '../components/catalog/PosterGrid';
 import { GridSkeleton } from '../components/skeletons/GridSkeleton';
 import { TVFocusable } from '../components/common/TVFocusable';
+import { tvNavigation } from '../services/tvNavigation';
 
 export type SearchFilterType = 'all' | 'movie' | 'tv' | 'anime';
 
@@ -38,6 +39,14 @@ export function SearchScreen({
   onSelectMedia,
   onScroll,
 }: SearchScreenProps) {
+  const firstChipRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (firstChipRef.current) {
+      tvNavigation.registerFirstRailFirstItem(firstChipRef.current);
+    }
+  });
+
   const types: { id: SearchFilterType; label: string }[] = [
     { id: 'all', label: 'All' },
     { id: 'movie', label: 'Movies' },
@@ -71,13 +80,15 @@ export function SearchScreen({
 
       {/* Filter Type Chips */}
       <View style={styles.typeRow}>
-        {types.map(t => {
+        {types.map((t, idx) => {
           const isSelected = searchType === t.id;
           return (
             <TVFocusable
               key={t.id}
+              ref={idx === 0 ? firstChipRef : undefined}
               style={[styles.typeChip, isSelected && styles.typeChipActive]}
               focusedStyle={styles.typeChipFocused}
+              onPressLeft={idx === 0 ? () => tvNavigation.focusSidebar('search') : undefined}
               onPress={() => onTypeChange(t.id)}>
               <Text style={[styles.typeChipText, isSelected && styles.typeChipTextActive]}>
                 {t.label}

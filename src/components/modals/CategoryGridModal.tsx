@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TVFocusable } from '../common/TVFocusable';
 import { useDeviceMode } from '../../hooks/useDeviceMode';
+import { tvNavigation } from '../../services/tvNavigation';
 import { GenreItem, POPULAR_GENRES } from '../home/GenreRail';
 import { LanguageItem, POPULAR_LANGUAGES } from '../home/LanguageRail';
 import { StudioInfo, POPULAR_STUDIOS } from '../../services/tmdb';
@@ -56,21 +57,21 @@ function BackArrowIcon({ size = 18, color = '#FFFFFF' }: { size?: number; color?
   );
 }
 
-function GenreGridCard({
-  genre,
-  isTV,
-  onPress,
-}: {
+const GenreGridCard = React.forwardRef<any, {
   genre: GenreItem;
+  index: number;
   isTV: boolean;
   onPress: () => void;
-}) {
+  onPressUp?: () => void;
+}>(function GenreGridCard({ genre, isTV, onPress, onPressUp }, ref) {
   const [imgError, setImgError] = useState(false);
 
   return (
     <TVFocusable
+      ref={ref}
       style={[styles.genreCard, isTV && styles.genreCardTV]}
       focusedStyle={styles.cardFocused}
+      onPressUp={onPressUp}
       onPress={onPress}>
       <View style={[styles.genreInner, { backgroundColor: genre.color }]}>
         {!imgError && genre.imageUrl ? (
@@ -86,23 +87,23 @@ function GenreGridCard({
       </View>
     </TVFocusable>
   );
-}
+});
 
-function LanguageGridCard({
-  lang,
-  isTV,
-  onPress,
-}: {
+const LanguageGridCard = React.forwardRef<any, {
   lang: LanguageItem;
+  index: number;
   isTV: boolean;
   onPress: () => void;
-}) {
+  onPressUp?: () => void;
+}>(function LanguageGridCard({ lang, isTV, onPress, onPressUp }, ref) {
   const [imgError, setImgError] = useState(false);
 
   return (
     <TVFocusable
+      ref={ref}
       style={[styles.genreCard, isTV && styles.genreCardTV]}
       focusedStyle={styles.cardFocused}
+      onPressUp={onPressUp}
       onPress={onPress}>
       <View style={[styles.genreInner, { backgroundColor: lang.color }]}>
         {!imgError && lang.imageUrl ? (
@@ -118,42 +119,74 @@ function LanguageGridCard({
       </View>
     </TVFocusable>
   );
-}
+});
 
-function StudioGridCard({
-  studio,
-  isTV,
-  onPress,
-}: {
+const StudioGridCard = React.forwardRef<any, {
   studio: StudioInfo;
+  index: number;
   isTV: boolean;
   onPress: () => void;
-}) {
+  onPressUp?: () => void;
+}>(function StudioGridCard({ studio, isTV, onPress, onPressUp }, ref) {
   const [errCount, setErrCount] = useState(0);
+  const [isFocused, setIsFocused] = useState(false);
   const currentUri = errCount === 0 ? studio.logoUrl : errCount === 1 ? studio.webFallbackUrl : null;
 
+  const isAppIcon =
+    studio.isAppIcon ??
+    ['netflix', 'disney', 'jiohotstar', 'prime', 'appletv', 'hulu', 'paramount', 'peacock', 'crunchyroll', 'zee5', 'sonyliv', 'starz'].includes(
+      studio.id
+    );
+
   return (
-    <TVFocusable
-      style={[styles.studioCard, isTV && styles.studioCardTV]}
-      focusedStyle={styles.cardFocused}
-      onPress={onPress}>
-      <View style={styles.studioInner}>
+    <View style={[styles.studioItemWrap, isTV && styles.studioItemWrapTV]}>
+      <TVFocusable
+        ref={ref}
+        style={[
+          styles.studioCard,
+          isTV && styles.studioCardTV,
+          { backgroundColor: studio.bgColor || '#000000' },
+        ]}
+        focusedStyle={styles.cardFocused}
+        borderRadius={isTV ? 20 : 16}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        onPressUp={onPressUp}
+        onPress={onPress}>
         {currentUri ? (
-          <Image
-            source={{ uri: currentUri }}
-            style={[styles.studioLogo, { tintColor: '#FFFFFF' }]}
-            resizeMode="contain"
-            onError={() => setErrCount(prev => prev + 1)}
-          />
+          isAppIcon ? (
+            <Image
+              source={{ uri: currentUri }}
+              style={styles.studioLogo}
+              resizeMode="cover"
+              onError={() => setErrCount(prev => prev + 1)}
+            />
+          ) : (
+            <View style={[styles.logoPaddedWrap, isTV && styles.logoPaddedWrapTV]}>
+              <Image
+                source={{ uri: currentUri }}
+                style={styles.studioLogoContain}
+                resizeMode="contain"
+                onError={() => setErrCount(prev => prev + 1)}
+              />
+            </View>
+          )
         ) : (
-          <Text style={[styles.fallbackText, { color: studio.color || '#FFFFFF' }]}>
-            {studio.name}
-          </Text>
+          <View style={[styles.fallbackWrap, { backgroundColor: studio.bgColor || '#161922' }]}>
+            <Text style={[styles.fallbackText, { color: studio.color || '#FFFFFF' }]}>
+              {studio.logoText || studio.name}
+            </Text>
+          </View>
         )}
-      </View>
-    </TVFocusable>
+      </TVFocusable>
+      <Text
+        style={[styles.studioLabel, isTV && styles.studioLabelTV, isFocused && styles.studioLabelFocused]}
+        numberOfLines={1}>
+        {studio.name}
+      </Text>
+    </View>
   );
-}
+});
 
 export function CategoryGridModal({
   visible,
@@ -165,11 +198,28 @@ export function CategoryGridModal({
 }: CategoryGridModalProps) {
   const insets = useSafeAreaInsets();
   const { isTV, isLandscape } = useDeviceMode();
+  const backBtnRef = useRef<any>(null);
+  const firstItemRef = useRef<any>(null);
 
   const topInset = Math.max(
     insets.top,
     Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0
   );
+
+  useEffect(() => {
+    if (visible) {
+      tvNavigation.setModalOpen(true);
+      const timer = setTimeout(() => {
+        backBtnRef.current?.focus?.();
+      }, 60);
+      return () => {
+        clearTimeout(timer);
+        tvNavigation.setModalOpen(false);
+      };
+    } else {
+      tvNavigation.setModalOpen(false);
+    }
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -197,9 +247,11 @@ export function CategoryGridModal({
             isWide && styles.headerWide,
           ]}>
           <TVFocusable
+            ref={backBtnRef}
             style={[styles.backBtn, isWide && styles.backBtnWide]}
             focusedStyle={styles.btnFocused}
             hasTVPreferredFocus={true}
+            onPressDown={() => firstItemRef.current?.focus?.()}
             onPress={onClose}>
             <BackArrowIcon size={isWide ? 20 : 18} color="#FFFFFF" />
           </TVFocusable>
@@ -218,11 +270,14 @@ export function CategoryGridModal({
           showsVerticalScrollIndicator={false}>
           {type === 'genres' && (
             <View style={styles.gridRow}>
-              {POPULAR_GENRES.map(genre => (
+              {POPULAR_GENRES.map((genre, index) => (
                 <GenreGridCard
                   key={`all-genre-${genre.id}`}
+                  ref={index === 0 ? firstItemRef : undefined}
                   genre={genre}
+                  index={index}
                   isTV={isTV}
+                  onPressUp={index === 0 ? () => backBtnRef.current?.focus?.() : undefined}
                   onPress={() => {
                     onClose();
                     onSelectGenre?.(genre);
@@ -234,11 +289,14 @@ export function CategoryGridModal({
 
           {type === 'languages' && (
             <View style={styles.gridRow}>
-              {POPULAR_LANGUAGES.map(lang => (
+              {POPULAR_LANGUAGES.map((lang, index) => (
                 <LanguageGridCard
                   key={`all-lang-${lang.code}`}
+                  ref={index === 0 ? firstItemRef : undefined}
                   lang={lang}
+                  index={index}
                   isTV={isTV}
+                  onPressUp={index === 0 ? () => backBtnRef.current?.focus?.() : undefined}
                   onPress={() => {
                     onClose();
                     onSelectLanguage?.(lang);
@@ -250,11 +308,14 @@ export function CategoryGridModal({
 
           {type === 'studios' && (
             <View style={styles.gridRow}>
-              {POPULAR_STUDIOS.map(studio => (
+              {POPULAR_STUDIOS.map((studio, index) => (
                 <StudioGridCard
                   key={`all-studio-${studio.id}`}
+                  ref={index === 0 ? firstItemRef : undefined}
                   studio={studio}
+                  index={index}
                   isTV={isTV}
+                  onPressUp={index < 4 ? () => backBtnRef.current?.focus?.() : undefined}
                   onPress={() => {
                     onClose();
                     onSelectStudio?.(studio);
@@ -370,29 +431,67 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  studioItemWrap: {
+    width: '30%',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  studioItemWrapTV: {
+    width: '18%',
+    marginBottom: 20,
+  },
   studioCard: {
-    width: '47.5%',
-    height: 90,
-    borderRadius: 14,
+    width: 80,
+    height: 80,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-    backgroundColor: '#07080D',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: '#000000',
   },
   studioCardTV: {
-    width: '23%',
-    height: 104,
-    borderRadius: 16,
-  },
-  studioInner: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
+    width: 96,
+    height: 96,
+    borderRadius: 20,
   },
   studioLogo: {
     width: '100%',
     height: '100%',
+  },
+  logoPaddedWrap: {
+    flex: 1,
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoPaddedWrapTV: {
+    padding: 14,
+  },
+  studioLogoContain: {
+    width: '100%',
+    height: '100%',
+  },
+  studioLabel: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textAlign: 'center',
+    width: '100%',
+  },
+  studioLabelTV: {
+    fontSize: 13,
+    marginTop: 10,
+  },
+  studioLabelFocused: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  fallbackWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 6,
   },
   cardImage: {
     position: 'absolute',
@@ -405,18 +504,11 @@ const styles = StyleSheet.create({
   },
   fallbackText: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '900',
     textAlign: 'center',
   },
   cardFocused: {
-    borderColor: '#FFFFFF',
-    borderWidth: 2.5,
-    transform: [{ scale: 1.05 }],
-    elevation: 10,
-    shadowColor: '#FFFFFF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
+    zIndex: 10,
   },
 });

@@ -87,3 +87,7 @@ scratch*
 check-logos.js
 get-tmdb-logos.js
 generate-icons.ps1
+add_padding.js
+remove_borders.js
+remove_shadows.js
+ui_*.xml

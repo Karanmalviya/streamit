@@ -41,7 +41,7 @@ export async function resolveImdbId(
   type: 'movie' | 'tv' | 'anime' = 'movie'
 ): Promise<string | null> {
   try {
-    const mediaType = type === 'tv' ? 'tv' : 'movie';
+    const mediaType = type === 'tv' || type === 'anime' ? 'tv' : 'movie';
     const extUrl = `${ENV.TMDB_BASE_URL}/${mediaType}/${tmdbId}/external_ids?api_key=${ENV.TMDB_API_KEY}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
@@ -50,6 +50,7 @@ export async function resolveImdbId(
 
     if (res.ok) {
       const data = await res.json();
+      console.log(`[IntroDB] Resolved TMDB ${tmdbId} (${mediaType}) -> IMDb: ${data.imdb_id}`);
       return data.imdb_id || null;
     }
   } catch (err) {
@@ -84,9 +85,12 @@ export async function fetchIntroSegments(
   }
 
   try {
+    const baseUrl = ENV.INTRODB_BASE_URL;
+    if (!baseUrl) return null;
+
     const endpoint = isMovie
-      ? `https://api.introdb.app/segments?imdb_id=${encodeURIComponent(imdbId)}&is_movie=true`
-      : `https://api.introdb.app/segments?imdb_id=${encodeURIComponent(imdbId)}&season=${season}&episode=${episode}`;
+      ? `${baseUrl}?imdb_id=${encodeURIComponent(imdbId)}&is_movie=true`
+      : `${baseUrl}?imdb_id=${encodeURIComponent(imdbId)}&season=${season}&episode=${episode}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);

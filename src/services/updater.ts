@@ -78,7 +78,7 @@ export async function checkForAppUpdate(): Promise<UpdateInfo | null> {
 
 async function checkVersionJson(url: string): Promise<UpdateInfo | null> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   const res = await fetch(url, {
     signal: controller.signal,
@@ -120,7 +120,7 @@ async function checkVersionJson(url: string): Promise<UpdateInfo | null> {
 
 async function checkGitHubReleases(url: string): Promise<UpdateInfo | null> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   const res = await fetch(url, {
     signal: controller.signal,
@@ -166,13 +166,17 @@ async function checkGitHubReleases(url: string): Promise<UpdateInfo | null> {
 export async function installAppUpdate(apkUrl: string): Promise<boolean> {
   if (!apkUrl) return false;
   try {
-    const supported = await Linking.canOpenURL(apkUrl);
-    if (supported) {
-      await Linking.openURL(apkUrl);
-      return true;
-    }
+    await Linking.openURL(apkUrl);
+    return true;
   } catch (e) {
-    console.warn('[Updater] Failed to open update URL:', e);
+    console.warn('[Updater] Direct openURL failed, trying canOpenURL check:', e);
+    try {
+      const supported = await Linking.canOpenURL(apkUrl);
+      if (supported) {
+        await Linking.openURL(apkUrl);
+        return true;
+      }
+    } catch {}
   }
   return false;
 }

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { CategoryFilter } from '../../services/tmdb';
 import { TVFocusable } from '../common/TVFocusable';
+import { tvNavigation } from '../../services/tvNavigation';
 
 export interface SubCategory {
   id: CategoryFilter;
@@ -15,16 +16,26 @@ interface CategoryPillsProps {
 }
 
 export function CategoryPills({ categories, activeId, onSelect }: CategoryPillsProps) {
+  const firstPillRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (firstPillRef.current) {
+      tvNavigation.registerFirstRailFirstItem(firstPillRef.current);
+    }
+  });
+
   return (
     <View style={styles.header}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        {categories.map(sub => {
+        {categories.map((sub, idx) => {
           const isSelected = activeId === sub.id;
           return (
             <TVFocusable
               key={sub.id}
+              ref={idx === 0 ? firstPillRef : undefined}
               style={[styles.pill, isSelected && styles.pillActive]}
               focusedStyle={styles.pillFocused}
+              onPressLeft={idx === 0 ? () => tvNavigation.focusSidebar() : undefined}
               onPress={() => onSelect(sub.id)}>
               <Text style={[styles.pillText, isSelected && styles.pillTextActive]}>
                 {sub.label}

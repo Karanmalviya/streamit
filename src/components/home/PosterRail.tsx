@@ -1,7 +1,10 @@
-import React, { memo, useCallback } from 'react';
-import { View, Text, FlatList, Image, StyleSheet, Platform } from 'react-native';
+import React, { memo, useCallback, useRef } from 'react';
+import { View, Text, FlatList, Image, StyleSheet, Pressable } from 'react-native';
 import { MediaItem } from '../../services/tmdb';
 import { TVFocusable } from '../common/TVFocusable';
+import { TVFixedFocusShelf } from '../common/TVFixedFocusShelf';
+import { useDeviceMode } from '../../hooks/useDeviceMode';
+import { tvNavigation } from '../../services/tvNavigation';
 
 const POSTER_WIDTH = 118;
 const POSTER_HEIGHT = 174;
@@ -12,25 +15,19 @@ interface PosterRailProps {
   title: string;
   items: MediaItem[];
   badgeText?: string;
+  railId?: string;
   onSelectMedia: (item: MediaItem) => void;
   onViewAll?: () => void;
+  onFocus?: () => void;
 }
 
-interface PosterCardProps {
+interface PosterInnerProps {
   item: MediaItem;
-  onSelect: (item: MediaItem) => void;
 }
 
-const PosterCard = memo(function PosterCardComponent({ item, onSelect }: PosterCardProps) {
-  const handlePress = useCallback(() => {
-    onSelect(item);
-  }, [item, onSelect]);
-
+const PosterInner = memo(function PosterInnerComponent({ item }: PosterInnerProps) {
   return (
-    <TVFocusable
-      style={styles.card}
-      focusedStyle={styles.cardFocused}
-      onPress={handlePress}>
+    <View style={styles.card}>
       {item.poster ? (
         <Image
           source={{ uri: item.poster }}
@@ -42,7 +39,26 @@ const PosterCard = memo(function PosterCardComponent({ item, onSelect }: PosterC
           <Text style={styles.fallbackText}>{item.title}</Text>
         </View>
       )}
-    </TVFocusable>
+    </View>
+  );
+});
+
+interface PosterCardProps {
+  item: MediaItem;
+  index: number;
+  onSelect: (item: MediaItem) => void;
+  onCardFocus?: (index: number) => void;
+}
+
+const PosterCard = memo(function PosterCardComponent({ item, onSelect }: PosterCardProps) {
+  const handlePress = useCallback(() => {
+    onSelect(item);
+  }, [item, onSelect]);
+
+  return (
+    <Pressable onPress={handlePress}>
+      <PosterInner item={item} />
+    </Pressable>
   );
 });
 
@@ -50,14 +66,37 @@ export const PosterRail = memo(function PosterRailComponent({
   title,
   items,
   badgeText,
+  railId = 'poster_rail',
   onSelectMedia,
   onViewAll,
+  onFocus,
 }: PosterRailProps) {
+  const { isTV } = useDeviceMode();
+  const flatListRef = useRef<FlatList>(null);
+
+  const handleCardFocus = useCallback((index: number) => {
+    if (onFocus) onFocus();
+    try {
+      flatListRef.current?.scrollToIndex({
+        index,
+        viewPosition: 0.2,
+        animated: true,
+      });
+    } catch {
+      // ignore out of bounds scroll attempts
+    }
+  }, [onFocus]);
+
   const renderItem = useCallback(
-    ({ item }: { item: MediaItem }) => (
-      <PosterCard item={item} onSelect={onSelectMedia} />
+    ({ item, index }: { item: MediaItem; index: number }) => (
+      <PosterCard
+        item={item}
+        index={index}
+        onSelect={onSelectMedia}
+        onCardFocus={handleCardFocus}
+      />
     ),
-    [onSelectMedia]
+    [onSelectMedia, handleCardFocus]
   );
 
   const keyExtractor = useCallback(
@@ -91,25 +130,51 @@ export const PosterRail = memo(function PosterRailComponent({
           <TVFocusable
             style={styles.viewAllBtn}
             focusedStyle={styles.viewAllBtnFocused}
+            borderRadius={6}
+            disabled={isTV}
+            onFocus={onFocus}
             onPress={onViewAll}>
             <Text style={styles.viewAllText}>View All &gt;</Text>
           </TVFocusable>
         )}
       </View>
 
-      <FlatList
-        horizontal
-        data={items}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-        initialNumToRender={5}
-        maxToRenderPerBatch={4}
-        windowSize={3}
-        removeClippedSubviews={Platform.OS === 'android'}
-      />
+      {isTV ? (
+        <TVFixedFocusShelf
+          data={items}
+          itemWidth={ITEM_TOTAL_WIDTH}
+          cardWidth={POSTER_WIDTH}
+          cardHeight={POSTER_HEIGHT}
+          borderRadius={6}
+          anchorLeft={12}
+          anchorTop={12}
+          paddingLeft={12}
+          paddingTop={12}
+          paddingBottom={16}
+          railId={railId}
+          onSelect={onSelectMedia}
+          onFocus={onFocus}
+          onPressLeftAtStart={() => tvNavigation.focusSidebar('home')}
+          renderItem={(item, index) => (
+            <PosterInner key={`tv-poster-${item.id}-${index}`} item={item} />
+          )}
+        />
+      ) : (
+        <FlatList
+          ref={flatListRef}
+          horizontal
+          data={items}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          getItemLayout={getItemLayout}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={5}
+          removeClippedSubviews={true}
+        />
+      )}
     </View>
   );
 });
@@ -144,8 +209,7 @@ const styles = StyleSheet.create({
   },
   viewAllBtnFocused: {
     backgroundColor: '#FFFFFF',
-    transform: [{ scale: 1.08 }],
-  },
+    },
   viewAllText: {
     color: '#94A3B8',
     fontSize: 13,
@@ -156,7 +220,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-    borderWidth: 1,
     borderColor: 'rgba(229, 9, 20, 0.3)',
   },
   badgeText: {
@@ -166,6 +229,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   card: {
     width: POSTER_WIDTH,
@@ -176,9 +240,6 @@ const styles = StyleSheet.create({
     marginRight: POSTER_GAP,
   },
   cardFocused: {
-    borderColor: '#FFFFFF',
-    borderWidth: 2.5,
-    transform: [{ scale: 1.08 }],
     zIndex: 10,
   },
   posterImg: {

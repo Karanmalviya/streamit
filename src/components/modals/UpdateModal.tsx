@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   Modal,
-  TouchableOpacity,
   ScrollView,
 } from 'react-native';
 import { TVFocusable } from '../common/TVFocusable';

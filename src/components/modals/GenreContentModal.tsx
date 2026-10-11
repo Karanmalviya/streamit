@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { MediaItem, fetchGenreContent } from '../../services/tmdb';
 import { TVFocusable } from '../common/TVFocusable';
 import { PosterGrid } from '../catalog/PosterGrid';
 import { useDeviceMode } from '../../hooks/useDeviceMode';
+import { tvNavigation } from '../../services/tvNavigation';
 import { GenreItem } from '../home/GenreRail';
 
 interface GenreContentModalProps {
@@ -64,6 +65,8 @@ export function GenreContentModal({
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
+  const isFetchingMoreRef = React.useRef(false);
+  const [hasMore, setHasMore] = useState(true);
 
   const topInset = Math.max(
     insets.top,
@@ -73,11 +76,20 @@ export function GenreContentModal({
   const loadGenreItems = useCallback(
     async (targetPage = 1, append = false) => {
       if (!genre) return;
+      if (append && isFetchingMoreRef.current) return;
+      if (append) isFetchingMoreRef.current = true;
       try {
-        if (!append) setLoading(true);
-        else setLoadingMore(true);
+        if (!append) {
+          setLoading(true);
+          setHasMore(true);
+        } else {
+          setLoadingMore(true);
+        }
 
         const res = await fetchGenreContent(genre, targetPage);
+        if (res.length === 0) {
+          setHasMore(false);
+        }
         if (append) {
           setItems(prev => {
             const seen = new Set(prev.map(i => i.id));
@@ -91,6 +103,7 @@ export function GenreContentModal({
       } catch (err) {
         console.warn('Failed to load genre items:', err);
       } finally {
+        isFetchingMoreRef.current = false;
         setLoading(false);
         setLoadingMore(false);
         setRefreshing(false);
@@ -99,11 +112,23 @@ export function GenreContentModal({
     [genre]
   );
 
+  const backBtnRef = useRef<any>(null);
+
   useEffect(() => {
     if (visible && genre) {
+      tvNavigation.setModalOpen(true);
       setPage(1);
       setItems([]);
       loadGenreItems(1, false);
+      const timer = setTimeout(() => {
+        backBtnRef.current?.focus?.();
+      }, 60);
+      return () => {
+        clearTimeout(timer);
+        tvNavigation.setModalOpen(false);
+      };
+    } else {
+      tvNavigation.setModalOpen(false);
     }
   }, [visible, genre, loadGenreItems]);
 
@@ -126,6 +151,7 @@ export function GenreContentModal({
             isWide && styles.headerWide,
           ]}>
           <TVFocusable
+            ref={backBtnRef}
             style={[styles.backBtn, isWide && styles.backBtnWide]}
             focusedStyle={styles.btnFocused}
             hasTVPreferredFocus={true}
@@ -156,7 +182,7 @@ export function GenreContentModal({
                 loadGenreItems(1, false);
               }}
               onLoadMore={() => {
-                if (!loading && !loadingMore && items.length >= 15) {
+                if (!loading && !loadingMore && hasMore && items.length >= 10) {
                   loadGenreItems(page + 1, true);
                 }
               }}

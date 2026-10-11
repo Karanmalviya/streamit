@@ -166,7 +166,7 @@ export const HDHubStreamProvider: StreamProvider = {
         });
       }
 
-      // Prioritize working CDN hosts (PixelDrain, HubCloud, Bunker CDN)
+      // Prioritize working CDN hosts (PixelDrain, HubCloud, Bunker CDN) and 720p quality
       return sources.sort((a, b) => {
         const getHostScore = (name: string) => {
           if (name.includes('PixelDrain')) return 30;
@@ -174,7 +174,16 @@ export const HDHubStreamProvider: StreamProvider = {
           if (name.includes('Bunker')) return 10;
           return 0;
         };
-        return getHostScore(b.name) - getHostScore(a.name);
+        const getQualityScore = (quality: string) => {
+          if (quality === '720p') return 40;
+          if (quality === '1080p') return 20;
+          if (quality === '480p') return 10;
+          if (quality === '4K') return -50;
+          return 0;
+        };
+        const scoreA = getHostScore(a.name) + getQualityScore(a.quality);
+        const scoreB = getHostScore(b.name) + getQualityScore(b.quality);
+        return scoreB - scoreA;
       });
     } catch (err) {
       console.warn('HDHub provider search error:', err);

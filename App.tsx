@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, StatusBar, BackHandler, StyleSheet } from 'react-native';
+import { View, StatusBar, BackHandler, StyleSheet, LogBox } from 'react-native';
+
+LogBox.ignoreAllLogs();
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
@@ -10,31 +12,37 @@ import {
   MediaItem,
   CategoryFilter,
   HomeFeedData,
-  StudioInfo,
   fetchHomeFeed,
   fetchCategoryItems,
   searchContent,
 } from './src/services/tmdb';
 
 import { TopNavbar } from './src/components/navigation/TopNavbar';
-import { BottomTabBar, NavTab } from './src/components/navigation/BottomTabBar';
+import { BottomTabBar, NavTab, SIDEBAR_WIDTH } from './src/components/navigation/BottomTabBar';
 import { SplashScreen } from './src/components/common/SplashScreen';
+import { useDeviceMode } from './src/hooks/useDeviceMode';
 
 // Screens
 import { HomeScreen } from './src/screens/HomeScreen';
 import { CatalogScreen } from './src/screens/CatalogScreen';
 import { SearchScreen, SearchFilterType } from './src/screens/SearchScreen';
 import { DetailScreen } from './src/screens/DetailScreen';
+import { ListingScreen, ListingViewConfig } from './src/screens/ListingScreen';
+import { ProfileScreen } from './src/screens/ProfileScreen';
 
 // Streaming & Playback
 import { PlayerScreen } from './src/screens/PlayerScreen';
-import { providerManager, StreamSource } from './src/services/providers';
+import { providerManager, StreamSource, getPreferred720pSource } from './src/services/providers';
 
 // Modals
 import { WatchlistModal } from './src/components/modals/WatchlistModal';
-import { StudioContentModal } from './src/components/modals/StudioContentModal';
+import { HistoryModal } from './src/components/modals/HistoryModal';
 import { UpdateModal } from './src/components/modals/UpdateModal';
+// App Update State
 import { checkForAppUpdate, UpdateInfo } from './src/services/updater';
+
+// Watch History State
+import { getWatchHistory, WatchHistoryItem } from './src/services/history';
 
 // Subcategories Configuration
 import { SubCategory } from './src/components/catalog/CategoryPills';
@@ -76,6 +84,7 @@ export function App(): React.JSX.Element {
 
 function MainAppContent(): React.JSX.Element {
   const insets = useSafeAreaInsets();
+  const { isLandscape, isTV } = useDeviceMode();
 
   // Navigation State
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
@@ -105,30 +114,49 @@ function MainAppContent(): React.JSX.Element {
   const [watchlist, setWatchlist] = useState<MediaItem[]>([]);
   const [watchlistModalVisible, setWatchlistModalVisible] = useState(false);
 
+  // Watch History State
+  const [watchHistory, setWatchHistory] = useState<WatchHistoryItem[]>([]);
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+
   // App Update State
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
 
   // Scroll Navbar Visibility State
   const [navbarVisible, setNavbarVisible] = useState(true);
+  const navbarVisibleRef = useRef(true);
   const lastScrollY = useRef(0);
 
   const handleScroll = useCallback((event: any) => {
     const currentOffset = event?.nativeEvent?.contentOffset?.y ?? 0;
     const diff = currentOffset - lastScrollY.current;
 
+    let nextVisible = navbarVisibleRef.current;
     if (currentOffset <= 20) {
-      setNavbarVisible(true);
-    } else if (diff > 12 && currentOffset > 60) {
-      setNavbarVisible(false); // scrolling down
-    } else if (diff < -10) {
-      setNavbarVisible(true);  // scrolling up
+      nextVisible = true;
+    } else if (diff > 16 && currentOffset > 60) {
+      nextVisible = false; // scrolling down
+    } else if (diff < -16) {
+      nextVisible = true;  // scrolling up
+    }
+
+    if (nextVisible !== navbarVisibleRef.current) {
+      navbarVisibleRef.current = nextVisible;
+      setNavbarVisible(nextVisible);
     }
 
     lastScrollY.current = currentOffset;
   }, []);
 
-  // Studio / Network Hub State
-  const [selectedStudio, setSelectedStudio] = useState<StudioInfo | null>(null);
+  // Listing View State (Separate full-page for Studios, Networks, Genres, Languages & Rails)
+  const [activeListing, setActiveListing] = useState<ListingViewConfig | null>(null);
+
+  const handleOpenListing = useCallback((config: ListingViewConfig) => {
+    setActiveListing(config);
+  }, []);
+
+  const handleCloseListing = useCallback(() => {
+    setActiveListing(null);
+  }, []);
 
   // Details Page State
   const [detailMedia, setDetailMedia] = useState<MediaItem | null>(null);
@@ -187,9 +215,8 @@ function MainAppContent(): React.JSX.Element {
       });
 
       if (sources && sources.length > 0) {
-        // Pick native direct stream if available, otherwise fallback to top embed
-        const nativeSource = sources.find(s => s.format !== 'embed');
-        const chosenSource = nativeSource || sources[0];
+        // Pick 720p stream by default (preferred), falling back to 1080p, 480p, or embed
+        const chosenSource = getPreferred720pSource(sources) || sources[0];
 
         setActivePlayback(prev => {
           if (!prev || prev.media.id !== item.id) return prev;
@@ -244,8 +271,7 @@ function MainAppContent(): React.JSX.Element {
         });
 
         if (sources && sources.length > 0) {
-          const nativeSource = sources.find(s => s.format !== 'embed');
-          const chosenSource = nativeSource || sources[0];
+          const chosenSource = getPreferred720pSource(sources) || sources[0];
 
           setActivePlayback(prev => {
             if (!prev || prev.media.id !== item.id) return prev;
@@ -288,6 +314,7 @@ function MainAppContent(): React.JSX.Element {
   }, []);
 
   // 2. Fetch Catalog Feed (Movies, Series, Anime)
+  const isFetchingMoreRef = useRef(false);
   const loadCatalogData = useCallback(
     async (
       tab: 'movie' | 'tv' | 'anime',
@@ -295,6 +322,8 @@ function MainAppContent(): React.JSX.Element {
       targetPage = 1,
       append = false
     ) => {
+      if (append && isFetchingMoreRef.current) return;
+      if (append) isFetchingMoreRef.current = true;
       try {
         if (!append) setGridLoading(true);
         else setGridLoadingMore(true);
@@ -313,6 +342,7 @@ function MainAppContent(): React.JSX.Element {
       } catch (err) {
         console.error('Catalog fetch error:', err);
       } finally {
+        isFetchingMoreRef.current = false;
         setGridLoading(false);
         setGridLoadingMore(false);
         setGridRefreshing(false);
@@ -325,6 +355,9 @@ function MainAppContent(): React.JSX.Element {
   useEffect(() => {
     loadHomeFeed();
 
+    // Load Watch History
+    getWatchHistory().then(setWatchHistory);
+
     // Check for updates in the background after app load
     const timer = setTimeout(async () => {
       try {
@@ -332,11 +365,20 @@ function MainAppContent(): React.JSX.Element {
         if (update) {
           setUpdateInfo(update);
         }
-      } catch (_) {}
+      } catch {
+        // ignore update check failures
+      }
     }, 3000);
 
     return () => clearTimeout(timer);
   }, [loadHomeFeed]);
+
+  // Refresh history when player is closed
+  useEffect(() => {
+    if (!activePlayback) {
+      getWatchHistory().then(setWatchHistory);
+    }
+  }, [activePlayback]);
 
   // Catalog tab / subcategory changes
   useEffect(() => {
@@ -356,12 +398,16 @@ function MainAppContent(): React.JSX.Element {
         setDetailMedia(null);
         return true;
       }
-      if (selectedStudio) {
-        setSelectedStudio(null);
+      if (activeListing) {
+        setActiveListing(null);
         return true;
       }
       if (watchlistModalVisible) {
         setWatchlistModalVisible(false);
+        return true;
+      }
+      if (historyModalVisible) {
+        setHistoryModalVisible(false);
         return true;
       }
       if (currentTab !== 'home') {
@@ -373,12 +419,13 @@ function MainAppContent(): React.JSX.Element {
 
     const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => sub.remove();
-  }, [activePlayback, detailMedia, selectedStudio, watchlistModalVisible, currentTab]);
+  }, [activePlayback, detailMedia, activeListing, watchlistModalVisible, historyModalVisible, currentTab]);
 
   // Tab switch handler
   const handleTabSwitch = useCallback((tab: NavTab) => {
     setCurrentTab(tab);
     setDetailMedia(null);
+    setActiveListing(null);
     setNavbarVisible(true);
     lastScrollY.current = 0;
     if (tab === 'movie' || tab === 'tv' || tab === 'anime') {
@@ -415,12 +462,11 @@ function MainAppContent(): React.JSX.Element {
   const watchlistIds = useMemo(() => new Set(watchlist.map(i => i.id)), [watchlist]);
   const isInWatchlist = useCallback((id: number) => watchlistIds.has(id), [watchlistIds]);
 
-  const handleSelectStudio = useCallback((studio: StudioInfo | null) => {
-    setSelectedStudio(studio);
-  }, []);
-
   const handleCloseWatchlistModal = useCallback(() => setWatchlistModalVisible(false), []);
-  const handleCloseStudioModal = useCallback(() => setSelectedStudio(null), []);
+  const handleOpenWatchlistModal = useCallback(() => setWatchlistModalVisible(true), []);
+  const handleCloseHistoryModal = useCallback(() => setHistoryModalVisible(false), []);
+  const handleOpenHistoryModal = useCallback(() => setHistoryModalVisible(true), []);
+  const handleClearHistory = useCallback(() => setWatchHistory([]), []);
   const handleClosePlayback = useCallback(() => setActivePlayback(null), []);
 
   const subCategories = useMemo(() => {
@@ -431,33 +477,46 @@ function MainAppContent(): React.JSX.Element {
   }, [currentTab]);
 
   return (
-    <View style={styles.root}>
-      {/* 1. Global Top Navigation (Hidden during video playback and on detail screen) */}
-      {!activePlayback && !detailMedia && (
+    <View style={[styles.root, (!isTV && !activePlayback) && styles.mobileBezelOffset]}>
+      {/* 1. Global Top Navigation (Hidden during playback, detail screen, and dedicated listing screen) */}
+      {!activePlayback && !detailMedia && !activeListing && (
         <TopNavbar
           topInset={insets.top}
           visible={navbarVisible}
+          onOpenWatchlist={handleOpenWatchlistModal}
+          onOpenHistory={handleOpenHistoryModal}
         />
       )}
 
       {/* 2. Screen Composition */}
-      <View style={styles.screenContainer}>
-        {activePlayback ? (
-          <PlayerScreen
-            media={activePlayback.media}
-            source={activePlayback.source}
-            availableSources={activePlayback.allSources}
-            season={activePlayback.season || 1}
-            episode={activePlayback.episode || 1}
-            topInset={insets.top}
-            onClose={handleClosePlayback}
-            onSelectSource={handleSwitchServer}
-            onSelectRelatedMedia={handleDirectPlayMedia}
-            onSelectEpisode={handleSelectEpisode}
-            onToggleWatchlist={toggleWatchlist}
-            isInWatchlist={isInWatchlist(activePlayback.media.id)}
-          />
-        ) : detailMedia ? (
+      <View style={[
+        styles.screenContainer,
+        (isLandscape && !activePlayback && !activeListing) && { marginLeft: SIDEBAR_WIDTH }
+      ]}>
+        {activePlayback ? (() => {
+          const match = watchHistory.find(h => 
+            h.media.id === activePlayback.media.id && 
+            (activePlayback.media.type === 'movie' || (h.season === activePlayback.season && h.episode === activePlayback.episode))
+          );
+          
+          return (
+            <PlayerScreen
+              media={activePlayback.media}
+              source={activePlayback.source}
+              availableSources={activePlayback.allSources}
+              season={activePlayback.season || 1}
+              episode={activePlayback.episode || 1}
+              topInset={insets.top}
+              onClose={handleClosePlayback}
+              onSelectSource={handleSwitchServer}
+              onSelectRelatedMedia={handleDirectPlayMedia}
+              onSelectEpisode={handleSelectEpisode}
+              onToggleWatchlist={toggleWatchlist}
+              isInWatchlist={isInWatchlist(activePlayback.media.id)}
+              initialProgress={match?.progress || 0}
+            />
+          );
+        })() : detailMedia ? (
           <DetailScreen
             media={detailMedia}
             topInset={insets.top}
@@ -468,17 +527,26 @@ function MainAppContent(): React.JSX.Element {
             isInWatchlist={isInWatchlist(detailMedia.id)}
             onSelectMedia={handleOpenDetailMedia}
           />
+        ) : activeListing ? (
+          <ListingScreen
+            config={activeListing}
+            topInset={insets.top}
+            onBack={handleCloseListing}
+            onSelectMedia={handleOpenDetailMedia}
+            onNavigateListing={handleOpenListing}
+          />
         ) : (
           <>
             {currentTab === 'home' && (
               <HomeScreen
                 homeData={homeData}
+                watchHistory={watchHistory}
                 loading={homeLoading}
                 refreshing={homeRefreshing}
                 topInset={insets.top}
                 onRefresh={loadHomeFeed}
                 onSelectMedia={handleOpenDetailMedia}
-                onSelectStudio={handleSelectStudio}
+                onOpenListing={handleOpenListing}
                 onToggleWatchlist={toggleWatchlist}
                 isInWatchlist={isInWatchlist}
                 onScroll={handleScroll}
@@ -528,12 +596,26 @@ function MainAppContent(): React.JSX.Element {
                 onScroll={handleScroll}
               />
             )}
+
+            {currentTab === 'profile' && (
+              <ProfileScreen
+                watchlist={watchlist}
+                watchHistory={watchHistory}
+                topInset={insets.top}
+                bottomInset={insets.bottom}
+                onSelectMedia={handleOpenDetailMedia}
+                onOpenWatchlistModal={handleOpenWatchlistModal}
+                onOpenHistoryModal={handleOpenHistoryModal}
+                onScroll={handleScroll}
+                onShowUpdate={setUpdateInfo}
+              />
+            )}
           </>
         )}
       </View>
 
-      {/* 3. Global Bottom Tab Navigation (Always visible except during full playback) */}
-      {!activePlayback && (
+      {/* 3. Global Bottom Tab Navigation (Always visible except during full playback and listing screen) */}
+      {!activePlayback && !activeListing && (
         <BottomTabBar
           currentTab={currentTab}
           onTabSelect={handleTabSwitch}
@@ -549,12 +631,12 @@ function MainAppContent(): React.JSX.Element {
         onSelectMedia={handleOpenDetailMedia}
       />
 
-      {/* 5. Studio / Network Hub Catalog Modal */}
-      <StudioContentModal
-        visible={!!selectedStudio}
-        studio={selectedStudio}
-        onClose={handleCloseStudioModal}
+      <HistoryModal
+        visible={historyModalVisible}
+        history={watchHistory}
+        onClose={handleCloseHistoryModal}
         onSelectMedia={handleOpenDetailMedia}
+        onClearHistory={handleClearHistory}
       />
 
       {/* 8. Animated In-App Splash Screen */}
@@ -579,6 +661,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#040406',
+  },
+  mobileBezelOffset: {
+    paddingHorizontal: 2,
   },
   screenContainer: {
     flex: 1,

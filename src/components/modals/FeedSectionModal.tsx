@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { MediaItem } from '../../services/tmdb';
 import { TVFocusable } from '../common/TVFocusable';
 import { PosterGrid } from '../catalog/PosterGrid';
 import { useDeviceMode } from '../../hooks/useDeviceMode';
+import { tvNavigation } from '../../services/tvNavigation';
 
 interface FeedSectionModalProps {
   visible: boolean;
@@ -59,11 +60,27 @@ export function FeedSectionModal({
 }: FeedSectionModalProps) {
   const insets = useSafeAreaInsets();
   const { isTV, isLandscape } = useDeviceMode();
+  const backBtnRef = useRef<any>(null);
 
   const topInset = Math.max(
     insets.top,
     Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0
   );
+
+  useEffect(() => {
+    if (visible) {
+      tvNavigation.setModalOpen(true);
+      const timer = setTimeout(() => {
+        backBtnRef.current?.focus?.();
+      }, 60);
+      return () => {
+        clearTimeout(timer);
+        tvNavigation.setModalOpen(false);
+      };
+    } else {
+      tvNavigation.setModalOpen(false);
+    }
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -84,6 +101,7 @@ export function FeedSectionModal({
             isWide && styles.headerWide,
           ]}>
           <TVFocusable
+            ref={backBtnRef}
             style={[styles.backBtn, isWide && styles.backBtnWide]}
             focusedStyle={styles.btnFocused}
             hasTVPreferredFocus={true}

@@ -31,10 +31,10 @@ class ProviderManager {
     tmdbId?: number;
   }): Promise<StreamSource[]> {
     const qualityWeight: Record<string, number> = {
-      '4K': 4,
-      '1080p': 3,
-      '720p': 2,
-      '480p': 1,
+      '720p': 100,
+      '1080p': 50,
+      '480p': 20,
+      '4K': -50,
       Auto: 0,
     };
 
@@ -63,8 +63,9 @@ class ProviderManager {
 
     // Sort streams:
     // 1. Native Direct Streams (HDHub Direct CDN, PixelDrain/HubCloud MP4/HLS) - highest priority
-    // 2. Direct format streams (format !== 'embed')
-    // 3. Embed fallback links (VidLink, AutoEmbed, etc.)
+    // 2. 720p default quality tier highest
+    // 3. Direct format streams (format !== 'embed')
+    // 4. Embed fallback links (VidLink, AutoEmbed, etc.)
     return allSources.sort((a, b) => {
       const isNativeA = a.format !== 'embed' ? 40 : 0;
       const isNativeB = b.format !== 'embed' ? 40 : 0;
@@ -76,6 +77,36 @@ class ProviderManager {
       return weightB - weightA;
     });
   }
+}
+
+export function getPreferred720pSource(sources: StreamSource[]): StreamSource | undefined {
+  if (!sources || sources.length === 0) return undefined;
+  const native = sources.filter(s => s.format !== 'embed');
+  const pool = native.length > 0 ? native : sources;
+
+  // 1. Prioritize 720p
+  const s720 = pool.find(s =>
+    s.quality?.toLowerCase().includes('720') ||
+    s.name?.toLowerCase().includes('720')
+  );
+  if (s720) return s720;
+
+  // 2. Fallback to 1080p
+  const s1080 = pool.find(s =>
+    s.quality?.toLowerCase().includes('1080') ||
+    s.name?.toLowerCase().includes('1080')
+  );
+  if (s1080) return s1080;
+
+  // 3. Fallback to 480p
+  const s480 = pool.find(s =>
+    s.quality?.toLowerCase().includes('480') ||
+    s.name?.toLowerCase().includes('480') ||
+    s.quality?.toLowerCase().includes('360')
+  );
+  if (s480) return s480;
+
+  return pool[0];
 }
 
 export const providerManager = new ProviderManager();

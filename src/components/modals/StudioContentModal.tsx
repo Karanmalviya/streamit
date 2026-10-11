@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import {
 import { TVFocusable } from '../common/TVFocusable';
 import { PosterGrid } from '../catalog/PosterGrid';
 import { useDeviceMode } from '../../hooks/useDeviceMode';
+import { tvNavigation } from '../../services/tvNavigation';
 
 interface StudioContentModalProps {
   visible: boolean;
@@ -67,8 +68,12 @@ export function StudioContentModal({
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
+  const [_page, setPage] = useState(1);
   const [logoError, setLogoError] = useState(false);
+
+  const isFetchingMoreRef = React.useRef(false);
+  const pageRef = React.useRef(1);
+  const [hasMore, setHasMore] = useState(true);
 
   const topInset = Math.max(
     insets.top,
@@ -78,11 +83,40 @@ export function StudioContentModal({
   const loadStudioItems = useCallback(
     async (targetPage = 1, append = false) => {
       if (!studio) return;
+      if (append && isFetchingMoreRef.current) return;
+      if (append) isFetchingMoreRef.current = true;
       try {
-        if (!append) setLoading(true);
-        else setLoadingMore(true);
+        if (!append) {
+          setLoading(true);
+          setHasMore(true);
+          pageRef.current = 1;
+        } else {
+          setLoadingMore(true);
+        }
 
-        const res = await fetchStudioContent(studio, targetPage);
+        let res: MediaItem[] = [];
+        if (!append) {
+          const [p1, p2] = await Promise.all([
+            fetchStudioContent(studio, 1),
+            fetchStudioContent(studio, 2),
+          ]);
+          const seen = new Set<number>();
+          res = [...p1, ...p2].filter(item => {
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+          });
+          pageRef.current = p2.length > 0 ? 2 : 1;
+          setPage(pageRef.current);
+        } else {
+          res = await fetchStudioContent(studio, targetPage);
+          pageRef.current = targetPage;
+          setPage(targetPage);
+        }
+
+        if (res.length === 0) {
+          setHasMore(false);
+        }
         if (append) {
           setItems(prev => {
             const seen = new Set(prev.map(i => i.id));
@@ -92,10 +126,10 @@ export function StudioContentModal({
         } else {
           setItems(res);
         }
-        setPage(targetPage);
       } catch (err) {
         console.warn('Failed to load studio items:', err);
       } finally {
+        isFetchingMoreRef.current = false;
         setLoading(false);
         setLoadingMore(false);
         setRefreshing(false);
@@ -104,12 +138,24 @@ export function StudioContentModal({
     [studio]
   );
 
+  const backBtnRef = useRef<any>(null);
+
   useEffect(() => {
     if (visible && studio) {
+      tvNavigation.setModalOpen(true);
       setPage(1);
       setItems([]);
       setLogoError(false);
       loadStudioItems(1, false);
+      const timer = setTimeout(() => {
+        backBtnRef.current?.focus?.();
+      }, 60);
+      return () => {
+        clearTimeout(timer);
+        tvNavigation.setModalOpen(false);
+      };
+    } else {
+      tvNavigation.setModalOpen(false);
     }
   }, [visible, studio, loadStudioItems]);
 
@@ -132,6 +178,7 @@ export function StudioContentModal({
             isWide && styles.headerWide,
           ]}>
           <TVFocusable
+            ref={backBtnRef}
             style={[styles.backBtn, isWide && styles.backBtnWide]}
             focusedStyle={styles.btnFocused}
             hasTVPreferredFocus={true}
@@ -146,7 +193,6 @@ export function StudioContentModal({
                 style={[
                   styles.headerLogoImg,
                   isWide && styles.headerLogoImgWide,
-                  { tintColor: '#FFFFFF' },
                 ]}
                 resizeMode="contain"
                 onError={() => setLogoError(true)}
@@ -177,8 +223,8 @@ export function StudioContentModal({
                 loadStudioItems(1, false);
               }}
               onLoadMore={() => {
-                if (!loading && !loadingMore && items.length >= 15) {
-                  loadStudioItems(page + 1, true);
+                if (!loading && !loadingMore && !isFetchingMoreRef.current && hasMore && items.length >= 10) {
+                  loadStudioItems(pageRef.current + 1, true);
                 }
               }}
               onSelectMedia={item => {

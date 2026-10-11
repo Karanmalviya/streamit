@@ -8,6 +8,7 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { TVFocusable } from '../common/TVFocusable';
 import { PlayIcon, CheckIcon } from '../common/Icons';
@@ -36,6 +37,8 @@ export function EpisodesModal({
   onClose,
   onSelectEpisode,
 }: EpisodesModalProps) {
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
   const [seasons, setSeasons] = useState<TVSeason[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<number>(currentSeason);
   const [episodes, setEpisodes] = useState<TVEpisode[]>([]);
@@ -107,13 +110,26 @@ export function EpisodesModal({
       animationType="slide"
       transparent={true}
       onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, isLandscape && { backgroundColor: 'transparent' }]}>
         <TouchableOpacity
           style={styles.dismissOverlay}
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={styles.sheet}>
+        <View style={[
+          styles.sheet,
+          isLandscape && { 
+            maxWidth: '100%', 
+            maxHeight: '100%',
+            height: '100%', 
+            backgroundColor: 'rgba(15, 23, 42, 0.9)', 
+            borderWidth: 0, 
+            paddingBottom: 0,
+            borderTopLeftRadius: 0,
+            borderTopRightRadius: 0,
+            paddingHorizontal: 60,
+          }
+        ]}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleInfo}>

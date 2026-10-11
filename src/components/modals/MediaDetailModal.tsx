@@ -1312,7 +1312,6 @@ const styles = StyleSheet.create({
   networkLogoImg: {
     width: 68,
     height: 20,
-    tintColor: '#FFFFFF',
   },
   networkBadgeText: {
     color: '#FFFFFF',
@@ -1531,14 +1530,10 @@ const styles = StyleSheet.create({
     marginVertical: 14,
   },
   btnFocused: {
-    borderColor: '#FFFFFF',
-    borderWidth: 2,
-    transform: [{ scale: 1.05 }],
+    zIndex: 10,
   },
   cardFocused: {
-    borderColor: '#FFFFFF',
-    borderWidth: 2,
+    zIndex: 10,
     backgroundColor: '#161924',
-    transform: [{ scale: 1.03 }],
   },
 });

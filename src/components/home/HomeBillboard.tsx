@@ -5,6 +5,7 @@ import {
   ScrollView,
   Image,
   StyleSheet,
+  Pressable,
 } from 'react-native';
 import Video, { ResizeMode, ViewType } from 'react-native-video';
 import {
@@ -20,8 +21,10 @@ import {
   BillboardSideOverlay,
 } from '../common/FadedOverlay';
 import { TVFocusable } from '../common/TVFocusable';
-import { VolumeIcon, VolumeMuteIcon } from '../common/Icons';
+import { VolumeIcon, VolumeMuteIcon, PlayIcon, PlusIcon, CheckIcon } from '../common/Icons';
 import { useDeviceMode } from '../../hooks/useDeviceMode';
+import { tvNavigation } from '../../services/tvNavigation';
+import { SIDEBAR_WIDTH } from '../navigation/BottomTabBar';
 
 interface HomeBillboardProps {
   heroes: MediaItem[];
@@ -30,6 +33,7 @@ interface HomeBillboardProps {
   onSelectMedia: (item: MediaItem) => void;
   onToggleWatchlist?: (item: MediaItem) => void;
   isInWatchlist?: (id: number) => boolean;
+  onFocus?: () => void;
 }
 
 interface HeroSlideProps {
@@ -43,11 +47,16 @@ interface HeroSlideProps {
   fadeHeight: number;
   imageTop: number;
   isWide: boolean;
+  isTV: boolean;
   failedLogo: boolean;
   onFailedLogo: (id: number) => void;
   onSelect: (item: MediaItem) => void;
   onTrailerEnded: () => void;
   onToggleMute: () => void;
+  onToggleWatchlist?: (item: MediaItem) => void;
+  isInWatchlist?: (id: number) => boolean;
+  onFocus?: () => void;
+  isFirstSlide?: boolean;
 }
 
 const HeroSlide = memo(function HeroSlideComponent({
@@ -61,19 +70,33 @@ const HeroSlide = memo(function HeroSlideComponent({
   fadeHeight,
   imageTop,
   isWide,
+  isTV: _isTV,
   failedLogo,
   onFailedLogo,
   onSelect,
   onTrailerEnded,
   onToggleMute,
+  onToggleWatchlist,
+  isInWatchlist,
+  onFocus,
+  isFirstSlide = false,
 }: HeroSlideProps) {
+  const watchNowRef = useRef<any>(null);
+  const [isMyListFocused, setIsMyListFocused] = useState(false);
   const [trailerUrl, setTrailerUrl] = useState<string | null>(hero.trailerUrl || null);
   const [titleLogo, setTitleLogo] = useState<string | null>(hero.titleLogo || null);
   const [extendedDetails, setExtendedDetails] = useState<MediaExtendedDetails | null>(null);
   const [showTrailer, setShowTrailer] = useState(false);
 
-  // Fetch trailer, logo, and extended details if not pre-populated
   useEffect(() => {
+    if (isActive && watchNowRef.current) {
+      tvNavigation.registerBillboardWatchNow(watchNowRef.current);
+    }
+  }, [isActive]);
+
+  // Fetch trailer, logo, and extended details only for the active slide or initial first slide
+  useEffect(() => {
+    if (!isActive && !isFirstSlide) return;
     let isMounted = true;
 
     if (hero.trailerUrl) {
@@ -111,7 +134,7 @@ const HeroSlide = memo(function HeroSlideComponent({
     return () => {
       isMounted = false;
     };
-  }, [hero]);
+  }, [hero, isActive, isFirstSlide]);
 
   // Use backdrop artwork for cinematic billboard presentation (fallback to poster if unavailable)
   const imageUri = hero.backdrop || hero.poster || undefined;
@@ -165,7 +188,8 @@ const HeroSlide = memo(function HeroSlideComponent({
 
   return (
     <View style={[styles.slide, { width: screenWidth, height: billboardTotalHeight }]}>
-      <TVFocusable
+      <Pressable
+        focusable={false}
         style={[
           styles.slideCard,
           {
@@ -174,8 +198,6 @@ const HeroSlide = memo(function HeroSlideComponent({
             marginTop: imageTop,
           },
         ]}
-        focusedStyle={styles.slideCardFocused}
-        hasTVPreferredFocus={true}
         onPress={handleSelect}>
         {/* 1. Backdrop / Poster Image (Shown immediately) */}
         <Image
@@ -211,13 +233,13 @@ const HeroSlide = memo(function HeroSlideComponent({
         {/* 5. Left-to-right Side Vignette on Wide / TV screens */}
         {isWide && <BillboardSideOverlay width={Math.min(cardWidth * 0.55, 520)} />}
 
-        {/* 6. Ultra-smooth Bottom Cinematic Faded Gradient (Extended to cover full bottom with zero gap) */}
+        {/* 6. Ultra-smooth Bottom Cinematic Faded Gradient */}
         <View style={styles.bottomOverlayWrap} pointerEvents="none">
           <BillboardFadedOverlay height={fadeHeight + 14} />
         </View>
 
         {/* 7. Minimalist Content Overlay */}
-        <View style={[styles.content, isWide && styles.contentWide]}>
+        <View style={[styles.content, isWide && styles.contentWide]} pointerEvents="box-none">
           {/* Title Logo Artwork or Bold Typography */}
           {titleLogo && !failedLogo ? (
             <Image
@@ -262,6 +284,54 @@ const HeroSlide = memo(function HeroSlideComponent({
               </>
             ) : null}
           </View>
+
+          {/* Action Buttons: Watch Now and My List */}
+          <View style={styles.actionRow}>
+            <TVFocusable
+              ref={watchNowRef}
+              style={styles.watchNowBtn}
+              focusedStyle={styles.watchNowBtnFocused}
+              focusRingStyle={styles.watchNowFocusRing}
+              hasTVPreferredFocus={isActive && isFirstSlide}
+              disabled={!isActive}
+              activeOpacity={0.8}
+              onPressLeft={() => tvNavigation.focusSidebar('home')}
+              onPressDown={() => tvNavigation.focusFirstRail()}
+              onFocus={() => {
+                if (onFocus) onFocus();
+                if (watchNowRef.current) {
+                  tvNavigation.setLastFocusedContent(watchNowRef.current);
+                  tvNavigation.setFocusedBillboard('watchNow', watchNowRef.current);
+                }
+              }}
+              onPress={handleSelect}>
+              <PlayIcon color="#000000" size={16} />
+              <Text style={styles.watchNowText}>Watch Now</Text>
+            </TVFocusable>
+
+            {onToggleWatchlist && isInWatchlist && (
+              <TVFocusable
+                style={styles.myListBtn}
+                focusedStyle={styles.myListBtnFocused}
+                focusRingStyle={styles.myListFocusRing}
+                activeOpacity={0.8}
+                disabled={!isActive}
+                onFocus={() => {
+                  setIsMyListFocused(true);
+                  tvNavigation.setFocusedBillboard('myList');
+                }}
+                onBlur={() => setIsMyListFocused(false)}
+                onPressDown={() => tvNavigation.focusFirstRail()}
+                onPress={() => onToggleWatchlist(hero)}>
+                {isInWatchlist(hero.id) ? (
+                  <CheckIcon color={isMyListFocused ? '#000000' : '#FFFFFF'} size={16} />
+                ) : (
+                  <PlusIcon color={isMyListFocused ? '#000000' : '#FFFFFF'} size={16} />
+                )}
+                <Text style={[styles.myListText, isMyListFocused && styles.myListTextFocused]}>My List</Text>
+              </TVFocusable>
+            )}
+          </View>
         </View>
 
         {/* Top Right Corner Mute/Unmute Trailer Button (Only visible when trailer appears/plays) */}
@@ -280,7 +350,7 @@ const HeroSlide = memo(function HeroSlideComponent({
             </TVFocusable>
           </View>
         ) : null}
-      </TVFocusable>
+      </Pressable>
     </View>
   );
 });
@@ -290,6 +360,9 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
   topInset,
   isBannerInView = true,
   onSelectMedia,
+  onToggleWatchlist,
+  isInWatchlist,
+  onFocus,
 }: HomeBillboardProps) {
   const [heroIndex, setHeroIndex] = useState(0);
   const heroIndexRef = useRef(0);
@@ -311,34 +384,34 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
   const advanceToNextSlide = useCallback(() => {
     if (heroes.length <= 1) return;
     const nextIdx = (heroIndexRef.current + 1) % heroes.length;
-    scrollRef.current?.scrollTo({ x: nextIdx * screenWidth, animated: true });
+    scrollRef.current?.scrollTo({ x: nextIdx * (isLandscape ? screenWidth - SIDEBAR_WIDTH : screenWidth), animated: true });
     setHeroIndex(nextIdx);
     heroIndexRef.current = nextIdx;
-  }, [heroes.length, screenWidth]);
+  }, [heroes.length, screenWidth, isLandscape]);
 
   // Re-align scroll position immediately whenever screen width or orientation changes
   useEffect(() => {
     scrollRef.current?.scrollTo({
-      x: heroIndexRef.current * screenWidth,
+      x: heroIndexRef.current * (isLandscape ? screenWidth - SIDEBAR_WIDTH : screenWidth),
       animated: false,
     });
-  }, [screenWidth]);
+  }, [screenWidth, isLandscape]);
 
   const handleScrollLayout = useCallback(() => {
     scrollRef.current?.scrollTo({
-      x: heroIndexRef.current * screenWidth,
+      x: heroIndexRef.current * (isLandscape ? screenWidth - SIDEBAR_WIDTH : screenWidth),
       animated: false,
     });
-  }, [screenWidth]);
+  }, [screenWidth, isLandscape]);
 
   // Handle trailer completion: advance immediately when trailer finishes
   const handleTrailerEnded = useCallback(() => {
     advanceToNextSlide();
   }, [advanceToNextSlide]);
 
-  // Auto-slide timer:
+  // Auto-slide timer (disabled on TV to prevent unexpected focus disruption):
   useEffect(() => {
-    if (heroes.length <= 1) return;
+    if (heroes.length <= 1 || isTV) return;
     const currentHero = heroes[heroIndex];
     const hasTrailer = Boolean(currentHero?.trailerUrl || currentHero?.trailerKey);
     const delay = hasTrailer ? 75000 : 7000;
@@ -348,16 +421,17 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [heroIndex, heroes, advanceToNextSlide]);
+  }, [heroIndex, heroes, advanceToNextSlide, isTV]);
 
   if (!heroes || !heroes.length) return null;
 
   const isWide = isTV || isLandscape;
+  const actualScreenWidth = isLandscape ? screenWidth - 80 : screenWidth;
   const horizontalPadding = isWide ? 28 : 14;
-  const cardWidth = screenWidth - horizontalPadding * 2;
+  const cardWidth = actualScreenWidth - horizontalPadding * 2;
   const navbarHeight = isWide ? 0 : topInset + 60;
   const billboardHeight = isWide
-    ? Math.round(Math.min(screenHeight * 0.72, 460))
+    ? Math.round(Math.min(screenHeight * 0.85, 680))
     : Math.round(cardWidth * (9 / 16));
 
   const imageTop = isWide ? 14 : navbarHeight + 14;
@@ -365,8 +439,8 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
   const fadeHeight = Math.round(billboardHeight * (isWide ? 0.82 : 0.90));
 
   return (
-    <View style={[styles.rootContainer, { width: screenWidth }]}>
-      <View style={[styles.container, { width: screenWidth, height: billboardTotalHeight }]}>
+    <View style={[styles.rootContainer, { width: actualScreenWidth }]}>
+      <View style={[styles.container, { width: actualScreenWidth, height: billboardTotalHeight }]}>
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -374,17 +448,18 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
           showsHorizontalScrollIndicator={false}
           scrollEventThrottle={16}
           decelerationRate="fast"
+          focusable={false}
           removeClippedSubviews={false}
           onLayout={handleScrollLayout}
           onMomentumScrollEnd={e => {
-            const idx = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+            const idx = Math.round(e.nativeEvent.contentOffset.x / actualScreenWidth);
             if (idx >= 0 && idx < heroes.length) {
               setHeroIndex(idx);
               heroIndexRef.current = idx;
             }
           }}
           onScrollEndDrag={e => {
-            const idx = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+            const idx = Math.round(e.nativeEvent.contentOffset.x / actualScreenWidth);
             if (idx >= 0 && idx < heroes.length) {
               setHeroIndex(idx);
               heroIndexRef.current = idx;
@@ -395,19 +470,24 @@ export const HomeBillboard = memo(function HomeBillboardComponent({
               key={`billboard-${hero.id}`}
               hero={hero}
               isActive={heroIndex === index}
+              isFirstSlide={index === 0}
               isBannerInView={isBannerInView}
               isMuted={isMuted}
-              screenWidth={screenWidth}
+              screenWidth={actualScreenWidth}
               billboardTotalHeight={billboardTotalHeight}
               billboardHeight={billboardHeight}
               fadeHeight={fadeHeight}
               imageTop={imageTop}
               isWide={isWide}
+              isTV={isTV}
               failedLogo={!!failedLogos[hero.id]}
               onFailedLogo={handleFailedLogo}
               onSelect={onSelectMedia}
               onTrailerEnded={handleTrailerEnded}
               onToggleMute={handleToggleMute}
+              onToggleWatchlist={onToggleWatchlist}
+              isInWatchlist={isInWatchlist}
+              onFocus={onFocus}
             />
           ))}
         </ScrollView>
@@ -448,10 +528,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   slideCardFocused: {
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    transform: [{ scale: 1.015 }],
-  },
+    },
   bottomOverlayWrap: {
     position: 'absolute',
     bottom: -8,
@@ -470,7 +547,6 @@ const styles = StyleSheet.create({
   nativeVideo: {
     width: '100%',
     height: '100%',
-    transform: [{ scale: 1.34 }],
     backgroundColor: '#040406',
   },
   content: {
@@ -481,11 +557,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 10,
     justifyContent: 'flex-end',
-    pointerEvents: 'none',
+    pointerEvents: 'box-none',
   },
   contentWide: {
     paddingHorizontal: 36,
-    paddingBottom: 16,
+    paddingBottom: 90,
     maxWidth: 640,
   },
   titleLogo: {
@@ -536,7 +612,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 3,
-    borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   tagPillText: {
@@ -554,6 +629,62 @@ const styles = StyleSheet.create({
     color: '#CBD5E1',
     fontSize: 12,
     fontWeight: '600',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 14,
+  },
+  watchNowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    gap: 8,
+  },
+  watchNowBtnFocused: {
+    backgroundColor: '#FFFFFF',
+    transform: [{ scale: 1.06 }],
+  },
+  watchNowFocusRing: {
+    borderColor: '#E50914',
+    borderWidth: 3,
+    borderRadius: 8,
+  },
+  myListBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    gap: 8,
+  },
+  myListBtnFocused: {
+    backgroundColor: '#FFFFFF',
+    transform: [{ scale: 1.06 }],
+  },
+  myListFocusRing: {
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    borderRadius: 8,
+  },
+  watchNowText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  myListText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  myListTextFocused: {
+    color: '#000000',
+    fontWeight: '800',
   },
   dotsContainer: {
     flexDirection: 'row',
@@ -587,7 +718,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     zIndex: 99,
-    elevation: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -601,6 +731,5 @@ const styles = StyleSheet.create({
   bannerMuteBtnFocused: {
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
     borderRadius: 6,
-    transform: [{ scale: 1.15 }],
-  },
+    },
 });

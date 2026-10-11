@@ -185,11 +185,11 @@ export function BookmarkIcon({ color = '#FFFFFF', size = 18, filled = false }: I
 }
 
 // 7. Play Icon
-export function PlayIcon({ color = '#FFFFFF', size = 16 }: IconProps) {
+export function PlayIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Polygon
-        points="6 4 20 12 6 20 6 4"
+        points="7 4 20 12 7 20"
         fill={color}
         stroke={color}
         strokeWidth={1.5}
@@ -200,11 +200,11 @@ export function PlayIcon({ color = '#FFFFFF', size = 16 }: IconProps) {
 }
 
 // 8. Pause Icon
-export function PauseIcon({ color = '#FFFFFF', size = 16 }: IconProps) {
+export function PauseIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Rect x="5" y="4" width="4.5" height="16" rx="1.5" fill={color} />
-      <Rect x="14.5" y="4" width="4.5" height="16" rx="1.5" fill={color} />
+      <Rect x="6" y="4" width="4" height="16" rx="1.5" fill={color} />
+      <Rect x="14" y="4" width="4" height="16" rx="1.5" fill={color} />
     </Svg>
   );
 }
@@ -216,7 +216,7 @@ export function BackIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
       <Path
         d="M15 19L8 12L15 5"
         stroke={color}
-        strokeWidth={2.4}
+        strokeWidth={2.8}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -231,21 +231,21 @@ export function VolumeIcon({ color = '#FFFFFF', size = 22 }: IconProps) {
       <Polygon
         points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
         stroke={color}
-        strokeWidth={2}
+        strokeWidth={2.2}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <Path
         d="M15.5 8.5C16.5 9.5 17 10.7 17 12C17 13.3 16.5 14.5 15.5 15.5"
         stroke={color}
-        strokeWidth={2}
+        strokeWidth={2.4}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <Path
         d="M19 5C20.9 6.9 22 9.3 22 12C22 14.7 20.9 17.1 19 19"
         stroke={color}
-        strokeWidth={2}
+        strokeWidth={2.4}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -260,7 +260,7 @@ export function VolumeMuteIcon({ color = '#FFFFFF', size = 22 }: IconProps) {
       <Polygon
         points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
         stroke={color}
-        strokeWidth={2}
+        strokeWidth={2.2}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -270,7 +270,7 @@ export function VolumeMuteIcon({ color = '#FFFFFF', size = 22 }: IconProps) {
         x2="16"
         y2="15"
         stroke={color}
-        strokeWidth={2}
+        strokeWidth={2.4}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -280,7 +280,7 @@ export function VolumeMuteIcon({ color = '#FFFFFF', size = 22 }: IconProps) {
         x2="22"
         y2="15"
         stroke={color}
-        strokeWidth={2}
+        strokeWidth={2.4}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -288,36 +288,46 @@ export function VolumeMuteIcon({ color = '#FFFFFF', size = 22 }: IconProps) {
   );
 }
 
-// 12. Replay 10 Seconds Icon
-export function Replay10Icon({ color = '#FFFFFF', size = 24 }: IconProps) {
+// 12. Replay 10 Seconds Icon (Double-chevron << style)
+export function Replay10Icon({ color = '#FFFFFF', size = 32 }: IconProps) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Svg width={size} height={size} viewBox="0 0 28 28" fill="none">
       <Path
-        d="M3 12C3 7.03 7.03 3 12 3C16.97 3 21 7.03 21 12C21 16.97 16.97 21 12 21C8.25 21 5.06 18.7 3.73 15.4"
+        d="M13 7L7 14L13 21"
         stroke={color}
-        strokeWidth={2}
+        strokeWidth={2.6}
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      <Polyline points="3 4 3 10 9 10" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      {/* 10 text center */}
-      <Path d="M9.5 10V15M13.5 10H15.5C16.05 10 16.5 10.45 16.5 11V14C16.5 14.55 16.05 15 15.5 15H13.5C12.95 15 12.5 14.55 12.5 14V11C12.5 10.45 12.95 10 13.5 10Z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+      <Path
+        d="M20 7L14 14L20 21"
+        stroke={color}
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </Svg>
   );
 }
 
-// 13. Forward 10 Seconds Icon
-export function Forward10Icon({ color = '#FFFFFF', size = 24 }: IconProps) {
+// 13. Forward 10 Seconds Icon (Double-chevron >> style)
+export function Forward10Icon({ color = '#FFFFFF', size = 32 }: IconProps) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Svg width={size} height={size} viewBox="0 0 28 28" fill="none">
       <Path
-        d="M21 12C21 7.03 16.97 3 12 3C7.03 3 3 7.03 3 12C3 16.97 7.03 21 12 21C15.75 21 18.94 18.7 20.27 15.4"
+        d="M8 7L14 14L8 21"
         stroke={color}
-        strokeWidth={2}
+        strokeWidth={2.6}
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      <Polyline points="21 4 21 10 15 10" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      {/* 10 text center */}
-      <Path d="M8.5 10V15M12.5 10H14.5C15.05 10 15.5 10.45 15.5 11V14C15.5 14.55 15.05 15 14.5 15H12.5C11.95 15 11.5 14.55 11.5 14V11C11.5 10.45 11.95 10 12.5 10Z" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+      <Path
+        d="M15 7L21 14L15 21"
+        stroke={color}
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </Svg>
   );
 }
@@ -326,17 +336,17 @@ export function Forward10Icon({ color = '#FFFFFF', size = 24 }: IconProps) {
 export function CCIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Rect x="2" y="4" width="20" height="16" rx="3" stroke={color} strokeWidth={1.8} />
+      <Rect x="2" y="4" width="20" height="16" rx="3" stroke={color} strokeWidth={2.2} />
       <Path
         d="M10 9.5C9.5 9 8.8 8.8 8 9C6.9 9.3 6 10.5 6 12C6 13.5 6.9 14.7 8 15C8.8 15.2 9.5 15 10 14.5"
         stroke={color}
-        strokeWidth={1.8}
+        strokeWidth={2.2}
         strokeLinecap="round"
       />
       <Path
         d="M18 9.5C17.5 9 16.8 8.8 16 9C14.9 9.3 14 10.5 14 12C14 13.5 14.9 14.7 16 15C16.8 15.2 17.5 15 18 14.5"
         stroke={color}
-        strokeWidth={1.8}
+        strokeWidth={2.2}
         strokeLinecap="round"
       />
     </Svg>
@@ -352,9 +362,9 @@ export function SubtitleIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
 export function AudioIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M9 18V5L21 3V16" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      <Circle cx="6" cy="18" r="3" stroke={color} strokeWidth={2} fill={color} />
-      <Circle cx="18" cy="16" r="3" stroke={color} strokeWidth={2} fill={color} />
+      <Path d="M9 18V5L21 3V16" stroke={color} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+      <Circle cx="6" cy="18" r="3" stroke={color} strokeWidth={2.2} fill={color} />
+      <Circle cx="18" cy="16" r="3" stroke={color} strokeWidth={2.2} fill={color} />
     </Svg>
   );
 }
@@ -363,11 +373,11 @@ export function AudioIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
 export function SettingsIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth={2} />
+      <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth={2.4} />
       <Path
         d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"
         stroke={color}
-        strokeWidth={1.8}
+        strokeWidth={2.2}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -379,7 +389,7 @@ export function SettingsIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
 export function EpisodesIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M4 6H20M4 12H20M4 18H13" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+      <Path d="M4 6H20M4 12H20M4 18H13" stroke={color} strokeWidth={2.6} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -388,7 +398,7 @@ export function EpisodesIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
 export function FullscreenIcon({ color = '#FFFFFF', size = 18 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke={color} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
@@ -397,7 +407,7 @@ export function FullscreenIcon({ color = '#FFFFFF', size = 18 }: IconProps) {
 export function ExitFullscreenIcon({ color = '#FFFFFF', size = 18 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M4 14h6m0 0v6m0-6L3 21m17-7h-6m0 0v6m0-6l7 7M4 10h6m0 0V4m0 6L3 3m17 7h-6m0 0V4m0 6l7-7" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M4 14h6m0 0v6m0-6L3 21m17-7h-6m0 0v6m0-6l7 7M4 10h6m0 0V4m0 6L3 3m17 7h-6m0 0V4m0 6l7-7" stroke={color} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
@@ -438,6 +448,69 @@ export function ShareIcon({ color = '#FFFFFF', size = 18 }: IconProps) {
       <Circle cx="18" cy="19" r="3" stroke={color} strokeWidth={2} />
       <Line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke={color} strokeWidth={2} strokeLinecap="round" />
       <Line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// 25. Calendar / Upcoming Icon
+export function UpcomingIcon({ color = '#FFD700', size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x="3" y="4" width="18" height="18" rx="3" stroke={color} strokeWidth={2} />
+      <Line x1="16" y1="2" x2="16" y2="6" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="8" y1="2" x2="8" y2="6" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="3" y1="10" x2="21" y2="10" stroke={color} strokeWidth={2} />
+      <Circle cx="8.5" cy="14.5" r="1.2" fill={color} />
+      <Circle cx="12" cy="14.5" r="1.2" fill={color} />
+      <Circle cx="15.5" cy="14.5" r="1.2" fill={color} />
+    </Svg>
+  );
+}
+
+// 26. Profile / User Icon
+export function ProfileIcon({ color = '#FFFFFF', size = 22, filled = false }: IconProps) {
+  const isFilled = filled || color === '#FFFFFF';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle
+        cx="12"
+        cy="8"
+        r="4"
+        fill={isFilled ? color : 'none'}
+        stroke={color}
+        strokeWidth={1.8}
+      />
+      <Path
+        d="M4 20C4 16.6863 7.58172 14 12 14C16.4183 14 20 16.6863 20 20"
+        fill={isFilled ? color : 'none'}
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+// 27. Update / Sync Icon
+export function UpdateIcon({ color = '#FFFFFF', size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Polyline points="3 3 3 8 8 8" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path
+        d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Polyline points="16 16 21 16 21 21" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }

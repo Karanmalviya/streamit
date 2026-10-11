@@ -373,12 +373,18 @@ export interface HomeFeedData {
   topAnime: MediaItem[];
 }
 
+const logoCache = new Map<string, string | null>();
+
 /**
  * Fetches official title logo image (transparent wordmark) for a movie or TV series
  */
 export async function fetchMediaLogo(mediaId: number, type: 'movie' | 'tv' | 'anime'): Promise<string | null> {
+  const tmdbType = type === 'tv' ? 'tv' : 'movie';
+  const cacheKey = `${tmdbType}-${mediaId}`;
+  if (logoCache.has(cacheKey)) {
+    return logoCache.get(cacheKey) || null;
+  }
   try {
-    const tmdbType = type === 'tv' ? 'tv' : 'movie';
     const data = await tmdbFetch(`/${tmdbType}/${mediaId}/images?api_key=${ENV.TMDB_API_KEY}`);
     const logos = data.logos || [];
     const enLogo =
@@ -386,10 +392,14 @@ export async function fetchMediaLogo(mediaId: number, type: 'movie' | 'tv' | 'an
       logos.find((l: any) => !l.iso_639_1) ||
       logos[0];
     if (enLogo && enLogo.file_path) {
-      return `${ENV.TMDB_IMAGE_BASE_URL}/w500${enLogo.file_path}`;
+      const url = `${ENV.TMDB_IMAGE_BASE_URL}/w500${enLogo.file_path}`;
+      logoCache.set(cacheKey, url);
+      return url;
     }
+    logoCache.set(cacheKey, null);
     return null;
   } catch {
+    logoCache.set(cacheKey, null);
     return null;
   }
 }
@@ -571,6 +581,62 @@ export async function fetchHomeFeed(): Promise<HomeFeedData> {
     blockbusters,
     topAnime,
   };
+}
+
+/**
+ * Fetches paginated items for any feed section (Top 10 This Week, Top 10 TV, Top 10 Movies, Blockbusters, etc.)
+ */
+export async function fetchFeedSectionContent(feedKey: string, page = 1): Promise<MediaItem[]> {
+  try {
+    switch (feedKey) {
+      case 'top10_week':
+      case 'trending_week': {
+        const data = await tmdbFetch(`/trending/all/week?api_key=${ENV.TMDB_API_KEY}&page=${page}`);
+        return (data.results || []).map((i: any) => formatItem(i, i.media_type === 'tv' ? 'tv' : 'movie'));
+      }
+      case 'top10_tv':
+      case 'trending_tv': {
+        const data = await tmdbFetch(`/trending/tv/week?api_key=${ENV.TMDB_API_KEY}&page=${page}`);
+        return (data.results || []).map((i: any) => formatItem(i, 'tv'));
+      }
+      case 'top10_movies':
+      case 'trending_movies_week': {
+        const data = await tmdbFetch(`/trending/movie/week?api_key=${ENV.TMDB_API_KEY}&page=${page}`);
+        return (data.results || []).map((i: any) => formatItem(i, 'movie'));
+      }
+      case 'trending_movies': {
+        const data = await tmdbFetch(`/trending/movie/day?api_key=${ENV.TMDB_API_KEY}&page=${page}`);
+        return (data.results || []).map((i: any) => formatItem(i, 'movie'));
+      }
+      case 'popular_movies': {
+        const data = await tmdbFetch(`/movie/popular?api_key=${ENV.TMDB_API_KEY}&language=en-US&page=${page}`);
+        return (data.results || []).map((i: any) => formatItem(i, 'movie'));
+      }
+      case 'popular_series': {
+        const data = await tmdbFetch(`/tv/popular?api_key=${ENV.TMDB_API_KEY}&language=en-US&page=${page}`);
+        return (data.results || []).map((i: any) => formatItem(i, 'tv'));
+      }
+      case 'top_rated_series': {
+        const data = await tmdbFetch(`/tv/top_rated?api_key=${ENV.TMDB_API_KEY}&language=en-US&page=${page}`);
+        return (data.results || []).map((i: any) => formatItem(i, 'tv'));
+      }
+      case 'blockbusters': {
+        const data = await tmdbFetch(`/movie/top_rated?api_key=${ENV.TMDB_API_KEY}&language=en-US&page=${page}`);
+        return (data.results || []).map((i: any) => formatItem(i, 'movie'));
+      }
+      case 'top_anime': {
+        const data = await tmdbFetch(
+          `/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_genres=16&with_original_language=ja&sort_by=popularity.desc&page=${page}`
+        );
+        return (data.results || []).map((i: any) => formatItem(i, 'anime'));
+      }
+      default:
+        return [];
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch feed section ${feedKey}:`, err);
+    return [];
+  }
 }
 
 /**
@@ -854,9 +920,10 @@ export interface StudioInfo {
   name: string;
   networkId?: number;
   companyId?: number;
-  providerId: number;
+  providerId?: number;
   color: string;
-  bgColor: string;
+  bgColor?: string;
+  isAppIcon?: boolean;
   logoText: string;
   logoUrl: string;
   webFallbackUrl: string;
@@ -866,16 +933,172 @@ export interface StudioInfo {
 
 export const POPULAR_STUDIOS: StudioInfo[] = [
   {
+    id: 'netflix',
+    name: 'Netflix',
+    networkId: 213,
+    providerId: 8,
+    color: '#E50914',
+    bgColor: '#000000',
+    isAppIcon: true,
+    logoText: 'NETFLIX',
+    logoUrl: 'https://image.tmdb.org/t/p/original/rK1KljqmbvO9HQa1PBFLILWah72.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/netflix.webp',
+    tagline: 'Netflix Originals & Series',
+  },
+  {
+    id: 'disney',
+    name: 'Disney+',
+    networkId: 2739,
+    providerId: 337,
+    color: '#3B82F6',
+    bgColor: '#040B18',
+    isAppIcon: true,
+    logoText: 'DISNEY+',
+    logoUrl: 'https://image.tmdb.org/t/p/original/5eZ872CghnHFLB1j8grszbrx0dx.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/disney.webp',
+    tagline: 'Disney, Pixar, Marvel, Star Wars',
+  },
+  {
+    id: 'jiohotstar',
+    name: 'JioHotstar',
+    networkId: 3919,
+    providerId: 2336,
+    color: '#0084FF',
+    bgColor: '#07162C',
+    isAppIcon: true,
+    logoText: 'hotstar',
+    logoUrl: 'https://image.tmdb.org/t/p/original/ledoS6EgdjTNq8F1e6wubUQer18.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/hotstar.webp',
+    tagline: 'Blockbusters, Hotstar Specials, HBO & Live Sports',
+  },
+  {
+    id: 'prime',
+    name: 'Prime Video',
+    networkId: 1024,
+    providerId: 119,
+    color: '#00A8E1',
+    bgColor: '#FFFFFF',
+    isAppIcon: true,
+    logoText: 'prime video',
+    logoUrl: 'https://image.tmdb.org/t/p/original/gMZdpavHmxFNnLpMHwVxfqeux2g.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/primevideo.webp',
+    tagline: 'Amazon Originals & Exclusives',
+  },
+  {
+    id: 'hbo',
+    name: 'HBO Max',
+    networkId: 3186,
+    providerId: 384,
+    color: '#A855F7',
+    bgColor: '#000000',
+    isAppIcon: false,
+    logoText: 'HBO MAX',
+    logoUrl: 'https://image.tmdb.org/t/p/w500/nmU0UMDJB3dRRQSTUqawzF2Od1a.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/original/nmU0UMDJB3dRRQSTUqawzF2Od1a.png',
+    tagline: 'Iconic series and blockbusters',
+  },
+  {
+    id: 'appletv',
+    name: 'Apple TV+',
+    networkId: 2552,
+    providerId: 350,
+    color: '#F8FAFC',
+    bgColor: '#000000',
+    isAppIcon: true,
+    logoText: ' tv+',
+    logoUrl: 'https://image.tmdb.org/t/p/original/9icYBfYFcwgCbky5VdGUIKJ4C5i.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/appletv.webp',
+    tagline: 'Original stories & prestige TV',
+  },
+  {
+    id: 'hulu',
+    name: 'Hulu',
+    networkId: 453,
+    providerId: 15,
+    color: '#22C55E',
+    bgColor: '#1CE783',
+    isAppIcon: true,
+    logoText: 'hulu',
+    logoUrl: 'https://image.tmdb.org/t/p/original/44uAnmSqvA4yBOdbPWN8YgQHjWm.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/hulu.webp',
+    tagline: 'Originals, FX shows, and TV hits',
+  },
+  {
+    id: 'paramount',
+    name: 'Paramount+',
+    networkId: 4330,
+    providerId: 531,
+    color: '#38BDF8',
+    bgColor: '#0B44CD',
+    isAppIcon: true,
+    logoText: 'PARAMOUNT+',
+    logoUrl: 'https://image.tmdb.org/t/p/original/pkx3klJlwW5JdtaulvDx6hDNtch.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/paramount.webp',
+    tagline: 'Mountain of Entertainment',
+  },
+  {
+    id: 'peacock',
+    name: 'Peacock',
+    networkId: 3353,
+    providerId: 386,
+    color: '#FACC15',
+    bgColor: '#000000',
+    isAppIcon: true,
+    logoText: 'peacock',
+    logoUrl: 'https://image.tmdb.org/t/p/original/a1UIdq5BrkcAxnxcUhFsNbXnxeu.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/peacock.webp',
+    tagline: 'NBCUniversal shows, live sports & originals',
+  },
+  {
+    id: 'crunchyroll',
+    name: 'Crunchyroll',
+    networkId: 1112,
+    providerId: 283,
+    color: '#F97316',
+    bgColor: '#F47521',
+    isAppIcon: true,
+    logoText: 'crunchyroll',
+    logoUrl: 'https://image.tmdb.org/t/p/original/uFL3c4Cq8M6WoLymlC5Y8bmGytV.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/crunchyroll.webp',
+    tagline: "World's largest anime library",
+  },
+  {
+    id: 'zee5',
+    name: 'ZEE5',
+    networkId: 3025,
+    providerId: 232,
+    color: '#8230C6',
+    bgColor: '#150524',
+    isAppIcon: true,
+    logoText: 'ZEE5',
+    logoUrl: 'https://image.tmdb.org/t/p/original/uQvhdtB8skccsGHmvKi3y5bqBsX.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/zee5.webp',
+    tagline: 'Original series, blockbusters & ZEE TV shows',
+  },
+  {
+    id: 'sonyliv',
+    name: 'Sony LIV',
+    networkId: 3411,
+    providerId: 237,
+    color: '#007BFF',
+    bgColor: '#0A1128',
+    isAppIcon: true,
+    logoText: 'Sony LIV',
+    logoUrl: 'https://image.tmdb.org/t/p/original/coM4QWbmIOa0xJ5cGR9BRmoV25B.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/sonyliv.webp',
+    tagline: 'Scam 1992, Rocket Boys, Gullak & Sony Originals',
+  },
+  {
     id: 'ghibli',
     name: 'Studio Ghibli',
     companyId: 10342,
     providerId: 10342,
     categoryType: 'movie',
     color: '#38BDF8',
-    bgColor: '#161922',
+    bgColor: '#0284C7',
     logoText: 'STUDIO GHIBLI',
-    logoUrl: 'https://image.tmdb.org/t/p/w500/uFuxPEZRUcBTEiYIxjHJq62Vr77.png',
-    webFallbackUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Studio_Ghibli.png/500px-Studio_Ghibli.png',
+    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Studio_Ghibli.png/500px-Studio_Ghibli.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/uFuxPEZRUcBTEiYIxjHJq62Vr77.png',
     tagline: 'Spirited Away, Princess Mononoke, Howl & Totoro',
   },
   {
@@ -885,10 +1108,10 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     providerId: 21444,
     categoryType: 'both',
     color: '#EF4444',
-    bgColor: '#161922',
+    bgColor: '#111827',
     logoText: 'MAPPA',
-    logoUrl: 'https://image.tmdb.org/t/p/w500/wSejGn3lAZdQ5muByxvzigwyDY6.png',
-    webFallbackUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/06/MAPPA_Logo.svg/500px-MAPPA_Logo.svg.png',
+    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/06/MAPPA_Logo.svg/500px-MAPPA_Logo.svg.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/wSejGn3lAZdQ5muByxvzigwyDY6.png',
     tagline: 'Jujutsu Kaisen, Attack on Titan, Chainsaw Man & Hell\'s Paradise',
   },
   {
@@ -898,107 +1121,11 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     providerId: 5887,
     categoryType: 'both',
     color: '#A855F7',
-    bgColor: '#161922',
+    bgColor: '#1E1B4B',
     logoText: 'ufotable',
-    logoUrl: 'https://image.tmdb.org/t/p/w500/m6FEqz8rQECnmfjEwjNhNAlmhCJ.png',
-    webFallbackUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Ufotable_logo.svg/500px-Ufotable_logo.svg.png',
+    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Ufotable_logo.svg/500px-Ufotable_logo.svg.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/m6FEqz8rQECnmfjEwjNhNAlmhCJ.png',
     tagline: 'Demon Slayer, Fate/Zero & Fate/stay night Heaven\'s Feel',
-  },
-  {
-    id: 'crunchyroll',
-    name: 'Crunchyroll',
-    networkId: 1112,
-    providerId: 283,
-    color: '#F97316',
-    bgColor: '#161922',
-    logoText: 'crunchyroll',
-    logoUrl: 'https://lunoflix.fun/providers/crunchyroll.webp',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/81cjvd924Uymkh4Elk5iWmsO4iq.png',
-    tagline: "World's largest anime library",
-  },
-  {
-    id: 'netflix',
-    name: 'Netflix',
-    networkId: 213,
-    providerId: 8,
-    color: '#E50914',
-    bgColor: '#161922',
-    logoText: 'NETFLIX',
-    logoUrl: 'https://lunoflix.fun/providers/netflix.webp',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/wwemzKWzjKYJFfCeiB57q3r4Bcm.png',
-    tagline: 'Netflix Originals & Series',
-  },
-  {
-    id: 'hbo',
-    name: 'HBO Max',
-    networkId: 3186,
-    providerId: 384,
-    color: '#A855F7',
-    bgColor: '#161922',
-    logoText: 'HBO MAX',
-    logoUrl: 'https://lunoflix.fun/providers/hbomax.webp',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/aS2zvJWn9Aq1NgQAA8F4Uhu07IO.png',
-    tagline: 'Iconic series and blockbusters',
-  },
-  {
-    id: 'prime',
-    name: 'Prime Video',
-    networkId: 1024,
-    providerId: 119,
-    color: '#00A8E1',
-    bgColor: '#161922',
-    logoText: 'prime video',
-    logoUrl: 'https://lunoflix.fun/providers/primevideo.webp',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/ifhbNuuqnlwYqXZWWnvxcvF50Ry.png',
-    tagline: 'Amazon Originals & Exclusives',
-  },
-  {
-    id: 'disney',
-    name: 'Disney+',
-    networkId: 2739,
-    providerId: 337,
-    color: '#3B82F6',
-    bgColor: '#161922',
-    logoText: 'DISNEY+',
-    logoUrl: 'https://lunoflix.fun/providers/disney.webp',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/dgPueyEdOwpQ10jruhL9vUQ4wMT.png',
-    tagline: 'Disney, Pixar, Marvel, Star Wars',
-  },
-  {
-    id: 'appletv',
-    name: 'Apple TV+',
-    networkId: 2552,
-    providerId: 350,
-    color: '#F8FAFC',
-    bgColor: '#161922',
-    logoText: ' tv+',
-    logoUrl: 'https://lunoflix.fun/providers/appletv.webp',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/4KAy34EHv8G2RODIvlKmND4202q.png',
-    tagline: 'Original stories & prestige TV',
-  },
-  {
-    id: 'paramount',
-    name: 'Paramount+',
-    networkId: 4330,
-    providerId: 531,
-    color: '#38BDF8',
-    bgColor: '#161922',
-    logoText: 'PARAMOUNT+',
-    logoUrl: 'https://lunoflix.fun/providers/paramount.webp',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/fi83B1oztoS47xxcemFdPMhIzK.png',
-    tagline: 'Mountain of Entertainment',
-  },
-  {
-    id: 'peacock',
-    name: 'Peacock',
-    networkId: 3353,
-    providerId: 386,
-    color: '#FACC15',
-    bgColor: '#161922',
-    logoText: 'peacock',
-    logoUrl: 'https://lunoflix.fun/providers/peacock.webp',
-    webFallbackUrl: 'https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://peacocktv.com&size=128',
-    tagline: 'NBCUniversal shows, live sports & originals',
   },
   {
     id: 'amc',
@@ -1006,23 +1133,11 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     networkId: 174,
     providerId: 528,
     color: '#E2E8F0',
-    bgColor: '#161922',
+    bgColor: '#000000',
     logoText: 'amc',
-    logoUrl: 'https://lunoflix.fun/providers/amc.webp',
-    webFallbackUrl: 'https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://amcplus.com&size=128',
+    logoUrl: 'https://image.tmdb.org/t/p/original/tg5ufQ1GkYDCMxSSxemfeKWcvRe.png',
+    webFallbackUrl: 'https://lunoflix.fun/providers/amc.webp',
     tagline: 'The Walking Dead, Breaking Bad & originals',
-  },
-  {
-    id: 'hulu',
-    name: 'Hulu',
-    networkId: 453,
-    providerId: 15,
-    color: '#22C55E',
-    bgColor: '#161922',
-    logoText: 'hulu',
-    logoUrl: 'https://lunoflix.fun/providers/hulu.webp',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/pqUTCleNUiTLAVlezOmYJWwwb3j.png',
-    tagline: 'Originals, FX shows, and TV hits',
   },
   {
     id: 'showtime',
@@ -1030,10 +1145,10 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     networkId: 67,
     providerId: 37,
     color: '#DC2626',
-    bgColor: '#161922',
+    bgColor: '#DC2626',
     logoText: 'SHOWTIME',
-    logoUrl: 'https://image.tmdb.org/t/p/w500/Allse9kbjiP6ExaQrnSpIhkurEi.png',
-    webFallbackUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Showtime.svg/500px-Showtime.svg.png',
+    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Showtime.svg/500px-Showtime.svg.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/Allse9kbjiP6ExaQrnSpIhkurEi.png',
     tagline: 'Yellowjackets, Dexter, Homeland & Billions',
   },
   {
@@ -1042,10 +1157,10 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     networkId: 318,
     providerId: 43,
     color: '#008489',
-    bgColor: '#161922',
+    bgColor: '#002B2B',
     logoText: 'STARZ',
-    logoUrl: 'https://image.tmdb.org/t/p/w500/qx3Y9LCaK4mq1ykFuDIfjshlo3U.png',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/8GJjw3HHsAJYwIWKIPBPfqMxlEa.png',
+    logoUrl: 'https://image.tmdb.org/t/p/original/h25xjouKmiSmFiiqw0aDXbxGZo7.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/qx3Y9LCaK4mq1ykFuDIfjshlo3U.png',
     tagline: 'Outlander, Power, Black Sails & Spartacus',
   },
   {
@@ -1054,7 +1169,7 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     networkId: 88,
     providerId: 237,
     color: '#FACC15',
-    bgColor: '#161922',
+    bgColor: '#000000',
     logoText: 'FX',
     logoUrl: 'https://image.tmdb.org/t/p/w500/aexGjtcs42DgRtZh7zOxayiry4J.png',
     webFallbackUrl: 'https://image.tmdb.org/t/p/w500/bPrSGSrI7w36yBFVBSNDCKo5TkY.png',
@@ -1065,11 +1180,12 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     name: 'The CW',
     networkId: 71,
     providerId: 83,
+    categoryType: 'tv',
     color: '#16A34A',
-    bgColor: '#161922',
+    bgColor: '#0E3B20',
     logoText: 'CW',
-    logoUrl: 'https://image.tmdb.org/t/p/w500/hEpcdJ4O6eitG9ADSnDXNUrlovS.png',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/ge9hzeaU7nMtQ4PjkFlc68dGAJ9.png',
+    logoUrl: 'https://image.tmdb.org/t/p/original/6fcYLKQIjGnrswtH7WxjjoSiyy3.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/hEpcdJ4O6eitG9ADSnDXNUrlovS.png',
     tagline: 'Supernatural, Arrowverse, Flash & Vampire Diaries',
   },
   {
@@ -1077,8 +1193,9 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     name: 'Cartoon Network',
     networkId: 56,
     providerId: 56,
+    categoryType: 'tv',
     color: '#FFFFFF',
-    bgColor: '#161922',
+    bgColor: '#000000',
     logoText: 'CN',
     logoUrl: 'https://image.tmdb.org/t/p/w500/c5OC6oVCg6QP4eqzW6XIq17CQjI.png',
     webFallbackUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Cartoon_Network_2010_logo.svg/500px-Cartoon_Network_2010_logo.svg.png',
@@ -1089,11 +1206,12 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     name: '[adult swim]',
     networkId: 80,
     providerId: 80,
+    categoryType: 'tv',
     color: '#38BDF8',
-    bgColor: '#161922',
+    bgColor: '#000000',
     logoText: '[adult swim]',
     logoUrl: 'https://image.tmdb.org/t/p/w500/tHZPHOLc6iF27G34cAZGPsMtMSy.png',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/kQeyUlXpgm6gHEnSObbfXS9sJ3m.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/original/tHZPHOLc6iF27G34cAZGPsMtMSy.png',
     tagline: 'Rick and Morty, Primal, FLCL & Robot Chicken',
   },
   {
@@ -1102,7 +1220,7 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     networkId: 4,
     providerId: 332,
     color: '#DC2626',
-    bgColor: '#161922',
+    bgColor: '#000000',
     logoText: 'BBC',
     logoUrl: 'https://image.tmdb.org/t/p/w500/uJjcCg3O4DMEjM0xtno9OWFciRP.png',
     webFallbackUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/BBC_Logo_2021.svg/500px-BBC_Logo_2021.svg.png',
@@ -1114,10 +1232,10 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     networkId: 4353,
     providerId: 582,
     color: '#0284C7',
-    bgColor: '#161922',
+    bgColor: '#001A33',
     logoText: 'discovery+',
     logoUrl: 'https://image.tmdb.org/t/p/w500/1D1bS3Dyw4ScYnFWTlBOvJXC3nb.png',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/bFC5XsARrCaYV9gNPwpqMEydBJ5.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/original/1D1bS3Dyw4ScYnFWTlBOvJXC3nb.png',
     tagline: 'MythBusters, Deadliest Catch & Documentaries',
   },
   {
@@ -1126,43 +1244,167 @@ export const POPULAR_STUDIOS: StudioInfo[] = [
     networkId: 466,
     providerId: 34,
     color: '#EAB308',
-    bgColor: '#161922',
+    bgColor: '#000000',
     logoText: 'MGM+',
-    logoUrl: 'https://image.tmdb.org/t/p/w500/6SnRcF523HHQ2b0396M6aBMvZ26.png',
-    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/ke3GCMWqnxUBS3TBWOZOfmoH1uq.png',
+    logoUrl: 'https://image.tmdb.org/t/p/original/q63Uzpu7JAs566vA2G23Lk7LcID.png',
+    webFallbackUrl: 'https://image.tmdb.org/t/p/w500/6SnRcF523HHQ2b0396M6aBMvZ26.png',
     tagline: 'From, Godfather of Harlem & MGM Blockbusters',
   },
 ];
 
-export async function fetchStudioContent(studioOrNetworkId: number | StudioInfo, page = 1): Promise<MediaItem[]> {
+/**
+ * Curated list of primary streaming platforms for the Home Screen horizontal rail.
+ * Excludes secondary/linear networks (discovery, bbc, cw, fx, starz, showtime, anime studios)
+ * which remain accessible under 'View All'.
+ */
+export const HOME_FEATURED_STUDIOS: StudioInfo[] = POPULAR_STUDIOS.filter(studio =>
+  !['discovery', 'bbc', 'thecw', 'fx', 'starz', 'showtime', 'ufotable', 'mappa', 'ghibli', 'cartoonnetwork', 'adultswim', 'mgm'].includes(studio.id)
+);
+
+export async function fetchStudioContent(
+  studioOrNetworkId: number | StudioInfo,
+  page = 1,
+  typeFilter: 'all' | 'movie' | 'tv' = 'all'
+): Promise<MediaItem[]> {
   try {
     if (typeof studioOrNetworkId === 'object') {
       const studio = studioOrNetworkId;
+
+      // 1. Production Company specific (e.g. Studio Ghibli, MAPPA, Ufotable)
       if (studio.companyId) {
-        if (studio.categoryType === 'movie') {
+        if (typeFilter === 'movie' || studio.categoryType === 'movie') {
           const data = await tmdbFetch(`/discover/movie?api_key=${ENV.TMDB_API_KEY}&with_companies=${studio.companyId}&sort_by=popularity.desc&page=${page}`);
           return (data.results || []).map((item: any) => formatItem(item, 'movie'));
         }
-        if (studio.categoryType === 'tv') {
+        if (typeFilter === 'tv' || studio.categoryType === 'tv') {
           const data = await tmdbFetch(`/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_companies=${studio.companyId}&sort_by=popularity.desc&page=${page}`);
           return (data.results || []).map((item: any) => formatItem(item, 'tv'));
         }
-        // Both Movies & TV (e.g. MAPPA, Ufotable)
+        // Both Movies & TV (typeFilter === 'all')
         const [tvData, movieData] = await Promise.all([
           tmdbFetch(`/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_companies=${studio.companyId}&sort_by=popularity.desc&page=${page}`).catch(() => ({ results: [] })),
           tmdbFetch(`/discover/movie?api_key=${ENV.TMDB_API_KEY}&with_companies=${studio.companyId}&sort_by=popularity.desc&page=${page}`).catch(() => ({ results: [] })),
         ]);
         const tvItems = (tvData.results || []).map((i: any) => formatItem(i, 'tv'));
         const movieItems = (movieData.results || []).map((i: any) => formatItem(i, 'movie'));
-        const combined = [...tvItems, ...movieItems].sort((a, b) => b.voteCount - a.voteCount);
+        const combined: MediaItem[] = [];
+        const maxLen = Math.max(tvItems.length, movieItems.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (movieItems[i]) combined.push(movieItems[i]);
+          if (tvItems[i]) combined.push(tvItems[i]);
+        }
         return combined;
       }
-      if (studio.networkId) {
-        const data = await tmdbFetch(`/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_networks=${studio.networkId}&sort_by=popularity.desc&page=${page}`);
+
+      // 2. Linear TV Networks (TV only: e.g. Cartoon Network, Adult Swim, The CW)
+      if (studio.categoryType === 'tv') {
+        if (typeFilter === 'movie') return [];
+        const netId = studio.networkId || 213;
+        const data = await tmdbFetch(`/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_networks=${netId}&sort_by=popularity.desc&page=${page}`);
         return (data.results || []).map((item: any) => formatItem(item, 'tv'));
       }
+
+      // 3. Streaming Platforms (Netflix, Disney+, Prime Video, Apple TV+, HBO Max, Hulu, Paramount+, Peacock, JioHotstar, etc.)
+      const providerIdStr = studio.id === 'prime'
+        ? '119|9'
+        : studio.id === 'netflix'
+        ? '8|1796'
+        : studio.id === 'hbo'
+        ? '384|1899'
+        : studio.id === 'jiohotstar'
+        ? '2336|122'
+        : studio.providerId
+        ? String(studio.providerId)
+        : '';
+
+      // Tab: Movies only
+      if (typeFilter === 'movie') {
+        if (!providerIdStr) return [];
+        const movieData = await tmdbFetch(
+          `/discover/movie?api_key=${ENV.TMDB_API_KEY}&with_watch_providers=${providerIdStr}&watch_region=US&sort_by=popularity.desc&page=${page}`
+        )
+          .then(data => {
+            if (data.results && data.results.length > 0) return data;
+            return tmdbFetch(`/discover/movie?api_key=${ENV.TMDB_API_KEY}&with_watch_providers=${providerIdStr}&sort_by=popularity.desc&page=${page}`);
+          })
+          .catch(() => ({ results: [] }));
+
+        return (movieData.results || []).map((item: any) => formatItem(item, 'movie'));
+      }
+
+      // Tab: TV Shows only
+      if (typeFilter === 'tv') {
+        let tvData = { results: [] };
+        if (providerIdStr) {
+          tvData = await tmdbFetch(
+            `/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_watch_providers=${providerIdStr}&watch_region=US&sort_by=popularity.desc&page=${page}`
+          )
+            .then(data => {
+              if (data.results && data.results.length > 0) return data;
+              if (studio.networkId) {
+                return tmdbFetch(`/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_networks=${studio.networkId}&sort_by=popularity.desc&page=${page}`);
+              }
+              return data;
+            })
+            .catch(() => ({ results: [] }));
+        } else if (studio.networkId) {
+          tvData = await tmdbFetch(`/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_networks=${studio.networkId}&sort_by=popularity.desc&page=${page}`).catch(() => ({ results: [] }));
+        }
+        return (tvData.results || []).map((item: any) => formatItem(item, 'tv'));
+      }
+
+      // Tab: All (Movies + TV interleaved)
+      const promises: [Promise<any>, Promise<any>] = [
+        providerIdStr
+          ? tmdbFetch(
+              `/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_watch_providers=${providerIdStr}&watch_region=US&sort_by=popularity.desc&page=${page}`
+            )
+              .then(data => {
+                if (data.results && data.results.length > 0) return data;
+                if (studio.networkId) {
+                  return tmdbFetch(`/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_networks=${studio.networkId}&sort_by=popularity.desc&page=${page}`);
+                }
+                return data;
+              })
+              .catch(() => ({ results: [] }))
+          : studio.networkId
+          ? tmdbFetch(`/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_networks=${studio.networkId}&sort_by=popularity.desc&page=${page}`).catch(() => ({ results: [] }))
+          : Promise.resolve({ results: [] }),
+
+        providerIdStr
+          ? tmdbFetch(`/discover/movie?api_key=${ENV.TMDB_API_KEY}&with_watch_providers=${providerIdStr}&watch_region=US&sort_by=popularity.desc&page=${page}`)
+              .then(data => {
+                if (data.results && data.results.length > 0) return data;
+                return tmdbFetch(`/discover/movie?api_key=${ENV.TMDB_API_KEY}&with_watch_providers=${providerIdStr}&sort_by=popularity.desc&page=${page}`);
+              })
+              .catch(() => ({ results: [] }))
+          : Promise.resolve({ results: [] }),
+      ];
+
+      const [tvData, movieData] = await Promise.all(promises);
+      const tvItems = (tvData.results || []).map((i: any) => formatItem(i, 'tv'));
+      const movieItems = (movieData.results || []).map((i: any) => formatItem(i, 'movie'));
+
+      if (movieItems.length === 0) return tvItems;
+      if (tvItems.length === 0) return movieItems;
+
+      const combined: MediaItem[] = [];
+      const seen = new Set<number>();
+      const maxLen = Math.max(tvItems.length, movieItems.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (movieItems[i] && !seen.has(movieItems[i].id)) {
+          seen.add(movieItems[i].id);
+          combined.push(movieItems[i]);
+        }
+        if (tvItems[i] && !seen.has(tvItems[i].id)) {
+          seen.add(tvItems[i].id);
+          combined.push(tvItems[i]);
+        }
+      }
+      return combined;
     }
-    const networkId = typeof studioOrNetworkId === 'number' ? studioOrNetworkId : studioOrNetworkId.networkId || 213;
+
+    const networkId = typeof studioOrNetworkId === 'number' ? studioOrNetworkId : 213;
     const data = await tmdbFetch(`/discover/tv?api_key=${ENV.TMDB_API_KEY}&with_networks=${networkId}&sort_by=popularity.desc&page=${page}`);
     return (data.results || []).map((item: any) => formatItem(item, 'tv'));
   } catch (err) {
@@ -1199,6 +1441,8 @@ export interface MediaExtendedDetails {
   runtime?: number;
   runtimeFormatted?: string;
   releaseDateFormatted?: string;
+  rawReleaseDate?: string;
+  isUpcoming?: boolean;
   status?: string;
   certification?: string;
   contentAdvisories: string[];
@@ -1298,6 +1542,8 @@ export async function fetchMediaCredits(
   }
 }
 
+const extendedDetailsCache = new Map<string, MediaExtendedDetails>();
+
 /**
  * Fetches full extended details including certification, advisory ratings, runtime, budget, languages
  */
@@ -1305,8 +1551,12 @@ export async function fetchMediaExtendedDetails(
   mediaId: number,
   type: 'movie' | 'tv' | 'anime'
 ): Promise<MediaExtendedDetails> {
+  const tmdbType = type === 'tv' ? 'tv' : 'movie';
+  const cacheKey = `${tmdbType}-${mediaId}`;
+  if (extendedDetailsCache.has(cacheKey)) {
+    return extendedDetailsCache.get(cacheKey)!;
+  }
   try {
-    const tmdbType = type === 'tv' ? 'tv' : 'movie';
     const data = await tmdbFetch(
       `/${tmdbType}/${mediaId}?api_key=${ENV.TMDB_API_KEY}&language=en-US&append_to_response=release_dates,content_ratings`
     );
@@ -1418,11 +1668,26 @@ export async function fetchMediaExtendedDetails(
     const origLangName = data.spoken_languages?.find((l: any) => (l.iso_639_1 || '').toUpperCase() === origLangCode)?.english_name || origLangCode;
     const originalLanguageFormatted = `${origLangName} (${origLangCode})`;
 
-    return {
+    // 8. Upcoming Status
+    const status = data.status || 'Released';
+    const statusLower = status.toLowerCase();
+    const isUpcomingStatus = ['upcoming', 'in production', 'post production', 'planned', 'rumored'].includes(statusLower);
+    let isFutureDate = false;
+    if (rawDate) {
+      const parsedTime = new Date(rawDate).getTime();
+      if (!isNaN(parsedTime) && parsedTime > Date.now()) {
+        isFutureDate = true;
+      }
+    }
+    const isUpcoming = isUpcomingStatus || isFutureDate;
+
+    const result: MediaExtendedDetails = {
       runtime,
       runtimeFormatted,
       releaseDateFormatted,
-      status: data.status || 'Released',
+      rawReleaseDate: rawDate || undefined,
+      isUpcoming,
+      status,
       certification,
       contentAdvisories: uniqueAdvisories,
       tagline: data.tagline || undefined,
@@ -1435,6 +1700,8 @@ export async function fetchMediaExtendedDetails(
       totalSeasons: data.number_of_seasons || undefined,
       totalEpisodes: data.number_of_episodes || undefined,
     };
+    extendedDetailsCache.set(cacheKey, result);
+    return result;
   } catch (err) {
     console.warn('Failed to fetch media extended details:', err);
     return {
