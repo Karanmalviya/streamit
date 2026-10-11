@@ -91,3 +91,5 @@ add_padding.js
 remove_borders.js
 remove_shadows.js
 ui_*.xml
+*.apk
+*.aab

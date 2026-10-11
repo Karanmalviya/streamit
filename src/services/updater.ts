@@ -1,8 +1,8 @@
 import { Linking } from 'react-native';
 
 export const CURRENT_APP_VERSION = {
-  versionCode: 3,
-  versionName: '1.1.1',
+  versionCode: 4,
+  versionName: '1.1.2',
 };
 
 export interface UpdateInfo {
